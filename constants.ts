@@ -1,0 +1,100 @@
+import { Task, TaskGroup } from './types';
+
+export const TASK_GROUPS: TaskGroup[] = [
+  {
+    category: 'Réception',
+    tasks: [
+      { id: 1, description: 'Bettrave, tournesol, luzerne, mais (10 kg)', unit: 'par quintal' },
+      { id: 2, description: 'Céréales, mais, tournesol, l\'orge, luzerne, Légumineuse (100 kg)', unit: 'par quintal' },
+      { id: 3, description: 'Céréales, mais, tournesol, l\'orge, luzerne, Légumineuse, riz (50 kg)', unit: 'par quintal' },
+      { id: 4, description: 'Céréales en vrac', unit: 'par quintal' },
+      { id: 5, description: 'Mais, tournesol, orge, luzerne, Légumineuse, riz (25 à 40 kg)', unit: 'par quintal' },
+      { id: 6, description: 'Avoine et tournesol (plus de 70 kg)', unit: 'par quintal' },
+      { id: 7, description: 'Avoine et tournesol (moins de 70 kg)', unit: 'par quintal' },
+      { id: 8, description: 'Engrais', unit: 'par quintal' },
+      { id: 9, description: 'Pomme de Terre', unit: 'par quintal' },
+    ],
+  },
+  {
+    category: 'Conditionnement ou reconditionnement',
+    tasks: [
+      { id: 10, description: 'Céréales et autres', unit: 'par quintal' },
+      { id: 11, description: 'Avoine et tournesol', unit: 'par quintal' },
+    ],
+  },
+  {
+    category: 'Débardage',
+    tasks: [
+      { id: 12, description: 'Céréales et autres (100 kg)', unit: 'par quintal' },
+      { id: 13, description: 'Céréales et autres (50 kg)', unit: 'par quintal' },
+      { id: 14, description: 'Avoine et tournesol', unit: 'par quintal' },
+    ],
+  },
+  {
+    category: 'Mise en pile après conditionnement ou reconditionnement',
+    tasks: [
+      { id: 15, description: 'Céréales et autres (100 kg)', unit: 'par quintal' },
+      { id: 16, description: 'Céréales et autres (100 kg)/Tracteur ou chariot', unit: 'par quintal' },
+      { id: 17, description: 'Céréales et autres (50 kg)', unit: 'par quintal' },
+      { id: 18, description: 'Céréales et autres (50 kg)/Tracteur ou chariot', unit: 'par quintal' },
+      { id: 19, description: 'Avoines et tournesol', unit: 'par quintal' },
+    ],
+  },
+  {
+    category: 'Traitement',
+    tasks: [
+      { id: 20, description: 'Céréales et autres', unit: 'par quintal' },
+      { id: 21, description: 'Avoine et tournesol', unit: 'par quintal' },
+    ],
+  },
+  {
+    category: 'Mise en pile après traitement',
+    tasks: [
+      { id: 22, description: 'Céréales et autres (50 kg)', unit: 'par quintal' },
+      { id: 23, description: 'Céréales et autres (50 kg)/Tracteur ou chariot', unit: 'par quintal' },
+      { id: 24, description: 'Avoine et tournesol', unit: 'par quintal' },
+    ],
+  },
+  {
+    category: 'Livraison',
+    tasks: [
+      { id: 25, description: 'Bettrave, tournesol, luzerne, mais (10 kg)', unit: 'par quintal' },
+      { id: 26, description: 'Céréales, mais, l\'orge, luzerne, légumineuse(100 kg)', unit: 'par quintal' },
+      { id: 27, description: 'Céréales, mais, l\'orge, luzerne, légumineuse, riz(50 kg)', unit: 'par quintal' },
+      { id: 28, description: 'Mais, orge, luzerne, légumineuse, riz(25 à 40 kg)', unit: 'par quintal' },
+      { id: 29, description: 'Avoine et tournesol (plus de 70 kg)', unit: 'par quintal' },
+      { id: 30, description: 'Avoine et tournesol (moins de 70 kg)', unit: 'par quintal' },
+      { id: 31, description: 'Pomme de Terre 50 kg', unit: 'par quintal' },
+      { id: 32, description: 'Engrais', unit: 'par quintal' },
+    ],
+  },
+    {
+    category: 'Opérations Diverses',
+    tasks: [
+      { id: 33, description: 'Identification des semences et Réglage du poids', unit: 'par quintal' },
+      { id: 34, description: 'Concassement des engrais en cas de prise en masse', unit: 'par quintal' },
+      { id: 35, description: 'Mise en pile après concassement - Engrais (50 kg)', unit: 'par quintal' },
+      { id: 36, description: 'Mise en pile après ré-étiquetage - Céréales (50 kg)', unit: 'par quintal' },
+      { id: 37, description: 'Indemnité de lait pendant les opérations de conditionnement, traitement et fumigation', unit: 'par jour' },
+      { id: 38, description: 'Fumigation et bachage après fumigation', unit: 'par quintal' },
+      { id: 39, description: 'bâchage', unit: 'par bâche' },
+      { id: 40, description: 'débachage et mise en ordre des bâches', unit: 'par bâche' },
+      { id: 41, description: 'Réception et Livraison sacherie', unit: 'par Pochette de 250 sacs' },
+      { id: 42, description: 'la mise en pochette de (25 à 50 sac) de la sacherie 100 kg', unit: 'par sac 100kg' },
+      { id: 43, description: 'Impression étiquettes (interne et externe du sac)', unit: 'par étiquette' },
+      { id: 44, description: 'Réception et livraison Produits de traitement', unit: 'par Unité (bidon)' },
+      { id: 45, description: 'Réception et livraison des bâches neufs', unit: 'par bâche' },
+      { id: 46, description: 'Nettoyage de machine après conditionnement (en cas d\'absence de chef d\'équipe )', unit: 'forfait' },
+      { id: 47, description: 'Indemnité de panier (travail continu de 8 heures)', unit: 'par jour' },
+    ],
+  },
+];
+
+export const ALL_TASKS_WITH_CATEGORY: (Task & { category: string })[] = TASK_GROUPS.flatMap(group => 
+    group.tasks.map(task => ({ ...task, category: group.category }))
+);
+
+export const TASK_MAP = new Map<number, Task & { category: string }>();
+ALL_TASKS_WITH_CATEGORY.forEach(task => {
+    TASK_MAP.set(task.id, task);
+});

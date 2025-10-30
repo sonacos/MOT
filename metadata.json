@@ -1,0 +1,5 @@
+{
+  "name": "Calculateur de Rémunération à la Tâche",
+  "description": "Une application pour calculer la rémunération des ouvriers à la tâche en fonction des opérations effectuées, basée sur une grille de tarifs prédéfinie.",
+  "requestFramePermissions": []
+}
