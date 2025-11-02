@@ -15,6 +15,8 @@ interface SidebarProps {
     onHistoryDateSelect: (date: string) => void;
     currentUser: User;
     isVisible: boolean;
+    deleteLogsByPeriod: (year: number, month: number, period: 'first' | 'second') => void;
+    requestConfirmation: (title: string, message: string | React.ReactNode, onConfirm: () => void) => void;
 }
 
 const SonacosLogo = () => (
@@ -37,7 +39,7 @@ const NavButton: React.FC<{view: View, label: string, icon: React.ReactNode, isA
     );
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange, logs, finalizedDates, entryDate, onHistoryDateSelect, currentUser, isVisible }) => {
+const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange, logs, finalizedDates, entryDate, onHistoryDateSelect, currentUser, isVisible, deleteLogsByPeriod, requestConfirmation }) => {
   
   const handleNavClick = (e: React.MouseEvent<HTMLButtonElement>, view: View) => {
     createRipple(e);
@@ -110,6 +112,8 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange, logs, fina
                     finalizedDates={finalizedDates}
                     currentDate={entryDate}
                     onDateSelect={onHistoryDateSelect}
+                    deleteLogsByPeriod={deleteLogsByPeriod}
+                    requestConfirmation={requestConfirmation}
                 />
             </div>
         </div>

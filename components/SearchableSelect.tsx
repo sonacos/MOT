@@ -80,7 +80,7 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({ options, value, onC
                     <ul className="overflow-y-auto">
                          {filteredGroups.map(group => (
                              <li key={group.label}>
-                                <span className="px-3 py-2 text-xs font-semibold text-slate-500 bg-slate-100 block sticky top-0 uppercase tracking-wider">{group.label}</span>
+                                <span className="px-3 py-2 text-xs font-semibold text-white bg-gradient-to-r from-purple-600 to-pink-800 block sticky top-0 uppercase tracking-wider">{group.label}</span>
                                 <ul>
                                     {group.options.map(option => (
                                         <li key={option.value}

@@ -6,7 +6,7 @@ import WorkerMultiSelect from './WorkerMultiSelect';
 import SearchableSelect from './SearchableSelect';
 import DailySummaryTable from './DailySummaryTable';
 import OverallSummaryTable from './OverallSummaryTable';
-import { playHoverSound } from '../utils/audioUtils';
+import { playHoverSound, playClickSound } from '../utils/audioUtils';
 import { createRipple, useGlow } from '../utils/effects';
 import { printElement, exportToExcel, exportToPDF } from '../utils/exportUtils';
 import ExportMenu from './ExportMenu';
@@ -14,7 +14,7 @@ import ExportMenu from './ExportMenu';
 interface DailyEntryViewProps {
     logs: DailyLog[];
     addLog: (log: Omit<DailyLog, 'id'>) => void;
-    deleteLog: (logId: string) => void;
+    deleteLog: (logId: string, ownerId?: string) => void;
     finalizedDates: string[];
     onToggleFinalize: (date: string) => void;
     workerGroups: WorkerGroup[];
@@ -22,6 +22,8 @@ interface DailyEntryViewProps {
     setEntryDate: (date: string) => void;
     // FIX: Add currentUser prop to fix type error from App.tsx
     currentUser: User;
+    deleteLogsByDate: (date: string) => void;
+    requestConfirmation: (title: string, message: string | React.ReactNode, onConfirm: () => void) => void;
 }
 
 const taskOptions = TASK_GROUPS.map(group => ({
@@ -33,7 +35,7 @@ const taskOptions = TASK_GROUPS.map(group => ({
     }))
 }));
 
-const DailyEntryView: React.FC<DailyEntryViewProps> = ({ logs, addLog, deleteLog, finalizedDates, onToggleFinalize, workerGroups, entryDate, setEntryDate, currentUser }) => {
+const DailyEntryView: React.FC<DailyEntryViewProps> = ({ logs, addLog, deleteLog, finalizedDates, onToggleFinalize, workerGroups, entryDate, setEntryDate, currentUser, deleteLogsByDate, requestConfirmation }) => {
     const [selectedWorkerIds, setSelectedWorkerIds] = useState<number[]>([]);
     const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
     const [quantity, setQuantity] = useState<number | ''>('');
@@ -99,6 +101,20 @@ const DailyEntryView: React.FC<DailyEntryViewProps> = ({ logs, addLog, deleteLog
         currentDate.setUTCDate(currentDate.getUTCDate() + offset);
         setEntryDate(currentDate.toISOString().split('T')[0]);
     };
+    
+    const handleDeleteDay = () => {
+        if (isDayFinalized) return;
+        const dateStr = new Date(entryDate + 'T00:00:00').toLocaleDateString('fr-FR');
+        requestConfirmation(
+            'Confirmer la Suppression',
+            `Êtes-vous sûr de vouloir supprimer toutes les saisies pour la journée du ${dateStr} ? Cette action est irréversible.`,
+            () => {
+                playClickSound();
+                deleteLogsByDate(entryDate);
+            }
+        );
+    }
+
 
     const downloadCSV = (csvContent: string, fileName: string) => {
         const blob = new Blob([`\uFEFF${csvContent}`], { type: 'text/csv;charset=utf-8;' }); // \uFEFF for BOM to support UTF-8 in Excel
@@ -218,6 +234,15 @@ const DailyEntryView: React.FC<DailyEntryViewProps> = ({ logs, addLog, deleteLog
                                  <button type="button" onClick={(e) => { createRipple(e); handleDateNavigate(1); }} className="p-2.5 border border-slate-300 rounded-r-md bg-slate-50 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-sonacos-green">
                                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-slate-600" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" /></svg>
                                 </button>
+                                <button
+                                    type="button"
+                                    onClick={handleDeleteDay}
+                                    disabled={isDayFinalized || logsForSelectedDate.length === 0}
+                                    title="Supprimer toutes les saisies de cette journée"
+                                    className="ml-2 p-2.5 border border-red-300 bg-red-50 text-red-600 rounded-md hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:bg-slate-100 disabled:text-slate-400 disabled:border-slate-300 disabled:cursor-not-allowed"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
+                                </button>
                             </div>
                         </div>
                         <div className="md:col-span-2 lg:col-span-1">
@@ -279,6 +304,8 @@ const DailyEntryView: React.FC<DailyEntryViewProps> = ({ logs, addLog, deleteLog
                         deleteLog={deleteLog}
                         isDayFinalized={isDayFinalized}
                         isCompact={isCompactMode}
+                        currentUser={currentUser}
+                        requestConfirmation={requestConfirmation}
                     />
                  </div>
             </div>

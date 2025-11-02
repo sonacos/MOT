@@ -1,19 +1,21 @@
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
-import { DailyLog, Worker } from '../types';
+import { DailyLog, Worker, User } from '../types';
 import { TASK_MAP } from '../constants';
-import { playHoverSound } from '../utils/audioUtils';
+import { playHoverSound, playClickSound } from '../utils/audioUtils';
 
 interface DailySummaryTableProps {
     logs: DailyLog[];
     workers: Worker[];
     date: string;
     addLog: (log: Omit<DailyLog, 'id'>) => void;
-    deleteLog: (logId: string) => void;
+    deleteLog: (logId: string, ownerId?: string) => void;
     isDayFinalized: boolean;
     isCompact: boolean;
+    currentUser: User;
+    requestConfirmation: (title: string, message: string | React.ReactNode, onConfirm: () => void) => void;
 }
 
-const DailySummaryTable: React.FC<DailySummaryTableProps> = ({ logs, workers, date, addLog, deleteLog, isDayFinalized, isCompact }) => {
+const DailySummaryTable: React.FC<DailySummaryTableProps> = ({ logs, workers, date, addLog, deleteLog, isDayFinalized, isCompact, currentUser, requestConfirmation }) => {
     
     const [draftQuantities, setDraftQuantities] = useState<Record<string, string>>({});
     const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -116,7 +118,7 @@ const DailySummaryTable: React.FC<DailySummaryTableProps> = ({ logs, workers, da
         if (newQuantity === oldQuantity) return;
 
         // Delete old logs for this cell
-        existingLogs.forEach(log => deleteLog(log.id));
+        existingLogs.forEach(log => deleteLog(log.id, log.owner));
 
         // Add a new log if quantity is positive
         if (!isNaN(newQuantity) && newQuantity > 0) {
@@ -130,6 +132,26 @@ const DailySummaryTable: React.FC<DailySummaryTableProps> = ({ logs, workers, da
             });
         }
     };
+    
+    const handleDeleteCell = (workerId: number, taskId: number) => {
+        if (isDayFinalized) return;
+        const workerName = workers.find(w => w.id === workerId)?.name;
+        const taskName = TASK_MAP.get(taskId)?.description;
+        
+        const existingLogs = dataMap.get(workerId)?.get(taskId) || [];
+        if (existingLogs.length === 0) return;
+
+        requestConfirmation(
+            'Confirmer la Suppression',
+            `Voulez-vous vraiment supprimer l'entrée pour ${workerName} sur la tâche "${taskName}" ?`,
+            () => {
+                playClickSound();
+                existingLogs.forEach(log => deleteLog(log.id, log.owner));
+                handleDraftChange(workerId, taskId, ''); // Clear input visually
+            }
+        );
+    }
+
 
     if (logs.length === 0) {
         return <p className="text-center py-8 text-slate-500">Aucune opération enregistrée pour cette date. Utilisez le formulaire ci-dessus pour commencer.</p>
@@ -157,7 +179,7 @@ const DailySummaryTable: React.FC<DailySummaryTableProps> = ({ logs, workers, da
                         </tr>
                     </thead>
                     <tbody>
-                        {workers.map(worker => {
+                        {workers.filter(w => w.owner === currentUser.uid || currentUser.role === 'superadmin').map(worker => {
                             const hasLogs = dataMap.has(worker.id);
                             return (
                                 <tr key={worker.id} className={`bg-white border-b border-slate-200 ${!hasLogs ? 'opacity-60' : ''}`}>
@@ -166,8 +188,9 @@ const DailySummaryTable: React.FC<DailySummaryTableProps> = ({ logs, workers, da
                                     </td>
                                     {headerTaskIds.map(taskId => {
                                         const key = `${worker.id}-${taskId}`;
+                                        const hasValue = draftQuantities[key] && parseFloat(draftQuantities[key]) > 0;
                                         return (
-                                            <td key={taskId} className="p-0 text-center font-medium border-r border-slate-200 transition-colors duration-150">
+                                            <td key={taskId} className="p-0 text-center font-medium border-r border-slate-200 transition-colors duration-150 relative group">
                                                 <input 
                                                     type="number"
                                                     value={draftQuantities[key] || ''}
@@ -179,6 +202,15 @@ const DailySummaryTable: React.FC<DailySummaryTableProps> = ({ logs, workers, da
                                                     disabled={isDayFinalized}
                                                     className={`w-full h-full text-center bg-transparent focus:bg-green-50 focus:outline-none focus:ring-1 focus:ring-sonacos-green rounded-sm disabled:cursor-not-allowed disabled:bg-slate-200/50 ${isCompact ? 'p-1 text-xs' : 'p-2'}`}
                                                 />
+                                                {hasValue && !isDayFinalized && (
+                                                    <button 
+                                                        onClick={() => handleDeleteCell(worker.id, taskId)}
+                                                        className="absolute top-1/2 right-1 -translate-y-1/2 p-0.5 bg-slate-200 text-slate-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-200 hover:text-red-700"
+                                                        title="Supprimer cette entrée"
+                                                    >
+                                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
+                                                    </button>
+                                                )}
                                             </td>
                                         );
                                     })}

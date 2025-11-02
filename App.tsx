@@ -10,6 +10,7 @@ import WorkerDaysSection from './components/WorkerDaysSection';
 import TransferOrderView from './components/TransferOrderView';
 import UserManagementView from './components/UserManagementView';
 import LoginView from './components/LoginView';
+import ConfirmationModal from './components/ConfirmationModal';
 import { unlockAudio } from './utils/audioUtils';
 import { auth, db } from './firebaseConfig';
 import { onAuthStateChanged, signOut } from "firebase/auth";
@@ -49,6 +50,34 @@ const App: React.FC = () => {
     const [currentUser, setCurrentUser] = useState<User | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [authChecked, setAuthChecked] = useState(false);
+    
+    // Confirmation Modal State
+    const [confirmationState, setConfirmationState] = useState<{
+        isOpen: boolean;
+        title: string;
+        message: string | React.ReactNode;
+        onConfirm: (() => void) | null;
+    }>({
+        isOpen: false,
+        title: '',
+        message: '',
+        onConfirm: null,
+    });
+
+    const requestConfirmation = (title: string, message: string | React.ReactNode, onConfirm: () => void) => {
+        setConfirmationState({ isOpen: true, title, message, onConfirm });
+    };
+
+    const handleConfirm = () => {
+        if (confirmationState.onConfirm) {
+            confirmationState.onConfirm();
+        }
+        handleCloseConfirmation();
+    };
+
+    const handleCloseConfirmation = () => {
+        setConfirmationState({ isOpen: false, title: '', message: '', onConfirm: null });
+    };
 
     // --- Firebase Data Fetching with Data Isolation ---
     const fetchData = useCallback(async (user: User) => {
@@ -201,6 +230,64 @@ const App: React.FC = () => {
         await deleteDoc(doc(db, 'users', effectiveOwnerId, 'dailyLogs', logId));
         setLogs(prev => prev.filter(log => log.id !== logId));
     }, [currentUser]);
+    
+    const deleteLogsByDate = useCallback(async (date: string) => {
+        if (!currentUser) return;
+
+        const logsToDelete = currentUser.role === 'superadmin'
+            ? logs.filter(l => l.date === date)
+            : logs.filter(l => l.date === date && l.owner === currentUser.uid);
+
+        if (logsToDelete.length === 0) return;
+
+        const batch = writeBatch(db);
+        logsToDelete.forEach(log => {
+            if (log.owner) {
+                const logRef = doc(db, 'users', log.owner, 'dailyLogs', log.id);
+                batch.delete(logRef);
+            }
+        });
+
+        await batch.commit();
+        const idsToDelete = new Set(logsToDelete.map(l => l.id));
+        setLogs(prev => prev.filter(l => !idsToDelete.has(l.id)));
+    }, [currentUser, logs]);
+
+    const deleteLogsByPeriod = useCallback(async (year: number, month: number, period: 'first' | 'second') => {
+        if (!currentUser) return;
+
+        const startDateNum = period === 'first' ? 1 : 16;
+        const endDateNum = period === 'first' ? 15 : new Date(year, month, 0).getDate();
+        
+        const startDate = new Date(Date.UTC(year, month - 1, startDateNum));
+        const endDate = new Date(Date.UTC(year, month - 1, endDateNum));
+        
+        const startDateStr = startDate.toISOString().split('T')[0];
+        const endDateStr = endDate.toISOString().split('T')[0];
+
+        const logsToDelete = currentUser.role === 'superadmin'
+            ? logs.filter(l => l.date >= startDateStr && l.date <= endDateStr)
+            : logs.filter(l => 
+                l.owner === currentUser.uid &&
+                l.date >= startDateStr &&
+                l.date <= endDateStr
+            );
+
+        if (logsToDelete.length === 0) return;
+
+        const batch = writeBatch(db);
+        logsToDelete.forEach(log => {
+            if (log.owner) {
+                const logRef = doc(db, 'users', log.owner, 'dailyLogs', log.id);
+                batch.delete(logRef);
+            }
+        });
+
+        await batch.commit();
+        const idsToDelete = new Set(logsToDelete.map(l => l.id));
+        setLogs(prev => prev.filter(l => !idsToDelete.has(l.id)));
+    }, [currentUser, logs]);
+
 
     const toggleFinalizeDate = useCallback(async (date: string) => {
         // Finalized dates are global, only superadmin can change
@@ -350,9 +437,13 @@ const App: React.FC = () => {
         const departedGroupId = currentUser.role === 'superadmin' ? sourceGroup.owner! : currentUser.uid;
         const departedGroup = workerGroups.find(g => g.isDepartedGroup && g.owner === departedGroupId);
 
-        if (window.confirm("Êtes-vous sûr de vouloir marquer cet ouvrier comme parti?")) {
-            await moveWorker(workerId, departedGroup ? departedGroup.id : DEPARTED_GROUP_ID);
-        }
+        requestConfirmation(
+            "Marquer comme Parti",
+            "Êtes-vous sûr de vouloir marquer cet ouvrier comme parti ? Ses données seront archivées.",
+            async () => {
+                await moveWorker(workerId, departedGroup ? departedGroup.id : DEPARTED_GROUP_ID);
+            }
+        );
     };
       
     const viewTitles: Record<View, string> = {
@@ -400,13 +491,15 @@ const App: React.FC = () => {
                 onHistoryDateSelect={handleHistoryDateSelect}
                 currentUser={currentUser}
                 isVisible={isSidebarVisible}
+                deleteLogsByPeriod={deleteLogsByPeriod}
+                requestConfirmation={requestConfirmation}
             />
             <div className="flex-1 flex flex-col min-w-0">
                 <TopBar title={viewTitles[currentView]} user={currentUser} onLogout={() => signOut(auth)} onToggleSidebar={toggleSidebar} />
                 <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
                     <div className={`transition-opacity duration-150 ${isAnimatingOut ? 'opacity-0' : 'opacity-100'}`}>
                         <div className="print:hidden">
-                            {currentView === 'entry' && <DailyEntryView logs={userLogs} addLog={addLog} deleteLog={deleteLog} finalizedDates={finalizedDates} onToggleFinalize={toggleFinalizeDate} workerGroups={userWorkerGroups} entryDate={entryDate} setEntryDate={setEntryDate} currentUser={currentUser}/>}
+                            {currentView === 'entry' && <DailyEntryView logs={userLogs} addLog={addLog} deleteLog={deleteLog} finalizedDates={finalizedDates} onToggleFinalize={toggleFinalizeDate} workerGroups={userWorkerGroups} entryDate={entryDate} setEntryDate={setEntryDate} currentUser={currentUser} deleteLogsByDate={deleteLogsByDate} requestConfirmation={requestConfirmation}/>}
                             {currentView === 'report' && <ReportView allLogs={logs} workerGroups={workerGroups} />}
                             {currentView === 'payroll' && <PayrollView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} />}
                             {currentView === 'workerDays' && <WorkerDaysSection workerGroups={userWorkerGroups} workedDays={userWorkedDays} onSave={saveWorkedDays} />}
@@ -432,6 +525,13 @@ const App: React.FC = () => {
                     </div>
                 </main>
             </div>
+             <ConfirmationModal
+                isOpen={confirmationState.isOpen}
+                onClose={handleCloseConfirmation}
+                onConfirm={handleConfirm}
+                title={confirmationState.title}
+                message={confirmationState.message}
+            />
         </div>
     );
 };
