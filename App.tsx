@@ -160,7 +160,21 @@ const App: React.FC = () => {
                         role: newUserRole,
                     };
                     
-                    await setDoc(userDocRef, newUserFirestoreData);
+                    const batch = writeBatch(db);
+                    batch.set(userDocRef, newUserFirestoreData);
+
+                    // Also create the "Departed" group for the new user
+                    const departedGroup: Omit<WorkerGroup, 'id'> = {
+                        groupName: 'Personnel Parti',
+                        workers: [],
+                        isDepartedGroup: true,
+                        isArchived: true,
+                        owner: firebaseUser.uid,
+                    };
+                    const departedGroupRef = doc(db, 'users', firebaseUser.uid, 'workerGroups', String(DEPARTED_GROUP_ID));
+                    batch.set(departedGroupRef, departedGroup);
+
+                    await batch.commit();
                     userDoc = await getDoc(userDocRef); // Re-fetch the doc after creation
                 }
 
@@ -192,9 +206,9 @@ const App: React.FC = () => {
         return () => unsubscribe();
     }, [fetchData]);
 
-    // Ensure the departed group always exists for the current user
+    // Ensure the departed group always exists for the current user (self-healing for existing users)
     useEffect(() => {
-        if (!isLoading && currentUser && currentUser.role === 'user' && !workerGroups.some(g => g.id === DEPARTED_GROUP_ID)) {
+        if (!isLoading && currentUser && !workerGroups.some(g => g.id === DEPARTED_GROUP_ID && g.owner === currentUser.uid)) {
              const departedGroup: WorkerGroup = {
                 id: DEPARTED_GROUP_ID,
                 groupName: 'Personnel Parti',
@@ -205,7 +219,11 @@ const App: React.FC = () => {
             };
             const groupDocRef = doc(db, 'users', currentUser.uid, 'workerGroups', String(DEPARTED_GROUP_ID));
             setDoc(groupDocRef, departedGroup)
-              .then(() => setWorkerGroups(prev => [...prev, departedGroup]));
+              .then(() => {
+                if(currentUser.role !== 'superadmin') { // Avoid state pollution for admin
+                    setWorkerGroups(prev => [...prev, departedGroup]);
+                }
+              });
         }
     }, [isLoading, workerGroups, currentUser]);
     
@@ -346,16 +364,15 @@ const App: React.FC = () => {
         if (currentUser) await fetchData(currentUser);
     };
     
-    const deleteGroup = async (groupId: number, ownerId: string) => {
+    const archiveGroup = async (groupId: number, ownerId: string) => {
         if (!currentUser) return;
         if (currentUser.role !== 'superadmin' && ownerId !== currentUser.uid) return;
-         if (window.confirm("Êtes-vous sûr de vouloir archiver ce groupe ?")) {
-            const groupRef = doc(db, 'users', ownerId, 'workerGroups', String(groupId));
-            const group = workerGroups.find(g => g.id === groupId && g.owner === ownerId);
-            if(group) {
-                await updateDoc(groupRef, { isArchived: true, workers: group.workers.map(w => ({...w, isArchived: true})) });
-                if (currentUser) await fetchData(currentUser);
-            }
+
+        const groupRef = doc(db, 'users', ownerId, 'workerGroups', String(groupId));
+        const group = workerGroups.find(g => g.id === groupId && g.owner === ownerId);
+        if(group) {
+            await updateDoc(groupRef, { isArchived: true, workers: group.workers.map(w => ({...w, isArchived: true})) });
+            if (currentUser) await fetchData(currentUser); // Refresh data after archiving
         }
     };
 
@@ -429,21 +446,58 @@ const App: React.FC = () => {
         if (currentUser) await fetchData(currentUser);
     };
 
-    const deleteWorker = async (workerId: number) => {
+    const archiveWorker = async (workerId: number) => {
         if (!currentUser) return;
         const sourceGroup = workerGroups.find(g => g.workers.some(w => w.id === workerId));
-        if (!sourceGroup) return;
+        if (!sourceGroup || !sourceGroup.owner) return;
 
-        const departedGroupId = currentUser.role === 'superadmin' ? sourceGroup.owner! : currentUser.uid;
-        const departedGroup = workerGroups.find(g => g.isDepartedGroup && g.owner === departedGroupId);
+        const ownerId = sourceGroup.owner;
+        const departedGroup = workerGroups.find(g => g.isDepartedGroup && g.owner === ownerId);
+        
+        if (departedGroup) {
+            await moveWorker(workerId, departedGroup.id);
+        } else {
+            console.error(`Could not find a departed group for owner ${ownerId}.`);
+            alert("Impossible de trouver le groupe du personnel parti pour cet utilisateur.");
+        }
+    };
+    
+    const deleteWorkerPermanently = async (workerId: number) => {
+        if (!currentUser) return;
 
-        requestConfirmation(
-            "Marquer comme Parti",
-            "Êtes-vous sûr de vouloir marquer cet ouvrier comme parti ? Ses données seront archivées.",
-            async () => {
-                await moveWorker(workerId, departedGroup ? departedGroup.id : DEPARTED_GROUP_ID);
+        let sourceGroup: WorkerGroup | null = null;
+        for (const group of workerGroups) {
+            if (group.workers.some(w => w.id === workerId)) {
+                sourceGroup = group;
+                break;
             }
-        );
+        }
+
+        if (!sourceGroup || !sourceGroup.owner) return;
+        
+        if (currentUser.role !== 'superadmin' && sourceGroup.owner !== currentUser.uid) {
+            console.error("Permission denied to delete worker permanently.");
+            return;
+        }
+
+        const ownerId = sourceGroup.owner;
+        const batch = writeBatch(db);
+
+        const updatedWorkers = sourceGroup.workers.filter(w => w.id !== workerId);
+        const groupRef = doc(db, 'users', ownerId, 'workerGroups', String(sourceGroup.id));
+        batch.update(groupRef, { workers: updatedWorkers });
+
+        const logsQuery = query(collection(db, 'users', ownerId, 'dailyLogs'), where("workerId", "==", workerId));
+        const logsSnapshot = await getDocs(logsQuery);
+        logsSnapshot.forEach(doc => batch.delete(doc.ref));
+
+        const workedDaysQuery = query(collection(db, 'users', ownerId, 'workedDays'), where("workerId", "==", workerId));
+        const workedDaysSnapshot = await getDocs(workedDaysQuery);
+        workedDaysSnapshot.forEach(doc => batch.delete(doc.ref));
+
+        await batch.commit();
+
+        if (currentUser) await fetchData(currentUser);
     };
       
     const viewTitles: Record<View, string> = {
@@ -506,9 +560,12 @@ const App: React.FC = () => {
                             {currentView === 'transferOrder' && <TransferOrderView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} />}
                             {currentView === 'management' && (
                                 <ManagementView 
-                                    workerGroups={userWorkerGroups} onAddGroup={addGroup} onEditGroup={editGroup} onDeleteGroup={deleteGroup}
-                                    onAddWorker={addWorker} onEditWorker={editWorker} onDeleteWorker={deleteWorker} onMoveWorker={moveWorker}
+                                    workerGroups={userWorkerGroups} onAddGroup={addGroup} onEditGroup={editGroup} onArchiveGroup={archiveGroup}
+                                    onAddWorker={addWorker} onEditWorker={editWorker} 
+                                    onArchiveWorker={archiveWorker} onDeleteWorkerPermanently={deleteWorkerPermanently}
+                                    onMoveWorker={moveWorker}
                                     currentUser={currentUser}
+                                    requestConfirmation={requestConfirmation}
                                 />
                             )}
                             {currentView === 'userManagement' && currentUser.role === 'superadmin' && (

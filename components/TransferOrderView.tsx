@@ -183,7 +183,7 @@ const TransferOrderView: React.FC<TransferOrderViewProps> = ({ allLogs, workerGr
                 <footer className="pt-24 mt-auto relative bottom-24">
                     <div className="flex justify-around">
                         <div className="flex flex-col items-center">
-                            <p className="font-semibold text-slate-800 mb-2">Le Trésorier</p>
+                            <p className="font-semibold text-slate-800 mb-2">Le Régisseur</p>
                         </div>
                         <div className="flex flex-col items-center">
                             <p className="font-semibold text-slate-800 mb-2">Le Chef de Centre</p>
