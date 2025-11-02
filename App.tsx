@@ -36,6 +36,7 @@ const App: React.FC = () => {
     const [currentView, setCurrentView] = useState<View>('entry');
     const [isAnimatingOut, setIsAnimatingOut] = useState(false);
     const [entryDate, setEntryDate] = useState(new Date().toISOString().split('T')[0]);
+    const [isSidebarVisible, setIsSidebarVisible] = useState(true);
 
     // Data states
     const [logs, setLogs] = useState<DailyLog[]>([]);
@@ -375,6 +376,10 @@ const App: React.FC = () => {
         if (currentView !== 'entry') handleViewChange('entry');
     };
 
+    const toggleSidebar = () => {
+        setIsSidebarVisible(prev => !prev);
+    };
+
     if (!authChecked) return <div className="min-h-screen flex items-center justify-center bg-slate-100">Chargement...</div>;
     if (!currentUser) return <LoginView />;
     if (isLoading) return <div className="min-h-screen flex items-center justify-center bg-slate-100">Chargement des données...</div>;
@@ -394,9 +399,10 @@ const App: React.FC = () => {
                 entryDate={entryDate}
                 onHistoryDateSelect={handleHistoryDateSelect}
                 currentUser={currentUser}
+                isVisible={isSidebarVisible}
             />
             <div className="flex-1 flex flex-col min-w-0">
-                <TopBar title={viewTitles[currentView]} user={currentUser} onLogout={() => signOut(auth)} />
+                <TopBar title={viewTitles[currentView]} user={currentUser} onLogout={() => signOut(auth)} onToggleSidebar={toggleSidebar} />
                 <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
                     <div className={`transition-opacity duration-150 ${isAnimatingOut ? 'opacity-0' : 'opacity-100'}`}>
                         <div className="print:hidden">

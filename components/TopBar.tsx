@@ -6,9 +6,10 @@ interface TopBarProps {
     title: string;
     user: User;
     onLogout: () => void;
+    onToggleSidebar: () => void;
 }
 
-const TopBar: React.FC<TopBarProps> = ({ title, user, onLogout }) => {
+const TopBar: React.FC<TopBarProps> = ({ title, user, onLogout, onToggleSidebar }) => {
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
 
@@ -25,7 +26,18 @@ const TopBar: React.FC<TopBarProps> = ({ title, user, onLogout }) => {
     return (
         <header className="bg-gradient-to-l from-red-600 to-green-400 sticky top-0 z-20 print:hidden">
             <div className="flex items-center justify-between p-4 h-16">
-                <h1 className="text-xl font-bold text-white">{title}</h1>
+                <div className="flex items-center gap-4">
+                    <button
+                        onClick={(e) => { createRipple(e); onToggleSidebar(); }}
+                        className="text-white p-2 rounded-full hover:bg-white/20 transition-colors focus:outline-none focus:ring-2 focus:ring-white"
+                        aria-label="Afficher/masquer le menu"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />
+                        </svg>
+                    </button>
+                    <h1 className="text-xl font-bold text-white">{title}</h1>
+                </div>
                 <div className="relative" ref={menuRef}>
                     <button onClick={() => setIsMenuOpen(prev => !prev)} className="flex items-center gap-3 cursor-pointer rounded-full p-1 pr-3 transition-colors hover:bg-white/20">
                         <div className="h-9 w-9 rounded-full bg-green-200 flex items-center justify-center text-sonacos-green font-bold text-lg ring-2 ring-green-200">
