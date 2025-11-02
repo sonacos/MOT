@@ -1,27 +1,37 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { DailyLog, Worker } from '../types';
 import { TASK_MAP } from '../constants';
+import { playHoverSound } from '../utils/audioUtils';
 
 interface DailySummaryTableProps {
     logs: DailyLog[];
     workers: Worker[];
     date: string;
     addLog: (log: Omit<DailyLog, 'id'>) => void;
-    deleteLog: (logId: number) => void;
+    deleteLog: (logId: string) => void;
     isDayFinalized: boolean;
+    isCompact: boolean;
 }
 
-const DailySummaryTable: React.FC<DailySummaryTableProps> = ({ logs, workers, date, addLog, deleteLog, isDayFinalized }) => {
+const DailySummaryTable: React.FC<DailySummaryTableProps> = ({ logs, workers, date, addLog, deleteLog, isDayFinalized, isCompact }) => {
     
     const [draftQuantities, setDraftQuantities] = useState<Record<string, string>>({});
+    const scrollContainerRef = useRef<HTMLDivElement>(null);
+    const [showLeftShadow, setShowLeftShadow] = useState(false);
+    const [showRightShadow, setShowRightShadow] = useState(false);
 
-    const { headerTaskIds, dataMap } = useMemo(() => {
+    const { headerTaskIds, dataMap, columnTotals } = useMemo(() => {
         const uniqueTaskIdsInLogs = [...new Set(logs.map(log => Number(log.taskId)))];
+        const sortedTaskIds = uniqueTaskIdsInLogs.sort((a, b) => Number(a) - Number(b));
         
         const dataMap = new Map<number, Map<number, DailyLog[]>>();
+        const totals = new Map<number, number>();
+
         for (const log of logs) {
             const workerId = Number(log.workerId);
             const taskId = Number(log.taskId);
+            const quantity = Number(log.quantity);
+
             if (!dataMap.has(workerId)) {
                 dataMap.set(workerId, new Map());
             }
@@ -31,9 +41,11 @@ const DailySummaryTable: React.FC<DailySummaryTableProps> = ({ logs, workers, da
                 workerMap.set(taskId, []);
             }
             workerMap.get(taskId)!.push(log);
+
+            totals.set(taskId, (totals.get(taskId) || 0) + quantity);
         }
         
-        return { headerTaskIds: uniqueTaskIdsInLogs.sort((a, b) => Number(a) - Number(b)), dataMap };
+        return { headerTaskIds: sortedTaskIds, dataMap, columnTotals: totals };
     }, [logs]);
 
     useEffect(() => {
@@ -48,6 +60,40 @@ const DailySummaryTable: React.FC<DailySummaryTableProps> = ({ logs, workers, da
         });
         setDraftQuantities(newDrafts);
     }, [dataMap, workers, headerTaskIds]);
+
+    const checkShadows = useCallback(() => {
+        const el = scrollContainerRef.current;
+        if (el) {
+            const isScrollable = el.scrollWidth > el.clientWidth;
+            const scrollEndReached = Math.abs(el.scrollWidth - el.clientWidth - el.scrollLeft) < 1;
+            setShowLeftShadow(el.scrollLeft > 0);
+            setShowRightShadow(isScrollable && !scrollEndReached);
+        }
+    }, []);
+
+    useEffect(() => {
+        const el = scrollContainerRef.current;
+        if (!el) return;
+
+        checkShadows();
+
+        el.addEventListener('scroll', checkShadows, { passive: true });
+        
+        const resizeObserver = new ResizeObserver(checkShadows);
+        resizeObserver.observe(el);
+        const tableEl = el.querySelector('table');
+        if(tableEl) {
+            resizeObserver.observe(tableEl);
+        }
+
+        window.addEventListener('resize', checkShadows);
+
+        return () => {
+            el.removeEventListener('scroll', checkShadows);
+            resizeObserver.disconnect();
+            window.removeEventListener('resize', checkShadows);
+        };
+    }, [checkShadows, headerTaskIds, isCompact]);
 
 
     const handleDraftChange = (workerId: number, taskId: number, value: string) => {
@@ -85,62 +131,80 @@ const DailySummaryTable: React.FC<DailySummaryTableProps> = ({ logs, workers, da
         }
     };
 
-
     if (logs.length === 0) {
         return <p className="text-center py-8 text-slate-500">Aucune opération enregistrée pour cette date. Utilisez le formulaire ci-dessus pour commencer.</p>
     }
 
     return (
-        <div className="overflow-x-auto border border-slate-200 rounded-lg">
-            <table className="w-full text-sm text-left text-slate-500">
-                <thead className="text-xs text-slate-700 uppercase bg-stone-100 sticky top-0 z-10">
-                    <tr>
-                        <th scope="col" className="px-4 py-3 border-b border-r border-slate-200 min-w-[180px] sticky left-0 bg-stone-100 z-10 font-semibold">
-                            Ouvrier
-                        </th>
-                        {headerTaskIds.map(taskId => {
-                            const task = TASK_MAP.get(taskId);
-                            if (!task) return null;
+        <div className="relative">
+            <div ref={scrollContainerRef} className="overflow-x-auto border border-slate-200 rounded-lg shadow-inner bg-slate-50/50">
+                <table className="w-full text-sm text-left text-slate-500">
+                    <thead className="text-xs text-white uppercase bg-sonacos-slate-dark sticky top-0 z-10">
+                        <tr>
+                            <th scope="col" className={`border-b-2 border-r border-slate-500 min-w-[160px] sticky left-0 bg-sonacos-slate-dark z-10 font-semibold ${isCompact ? 'px-2 py-1.5' : 'px-4 py-3'}`}>
+                                Ouvrier
+                            </th>
+                            {headerTaskIds.map(taskId => {
+                                const task = TASK_MAP.get(taskId);
+                                if (!task) return null;
+                                return (
+                                    <th key={task.id} scope="col" className={`border-b-2 border-r border-slate-500 text-center font-semibold ${isCompact ? 'min-w-[70px] px-1 py-1.5' : 'min-w-[120px] px-2 py-3'}`}>
+                                        <div className={`font-bold ${isCompact ? 'text-[10px]' : 'text-xs'}`}>{task.category}</div>
+                                        <div className={`font-normal text-slate-300 mt-0.5 ${isCompact ? 'text-[8px]' : 'text-[10px]'}`}>{task.description}</div>
+                                    </th>
+                                );
+                            })}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {workers.map(worker => {
+                            const hasLogs = dataMap.has(worker.id);
                             return (
-                                <th key={task.id} scope="col" className="px-3 py-3 border-b border-r border-slate-200 min-w-[180px] text-center font-semibold">
-                                    <div className="text-slate-800">{task.category}</div>
-                                    <div className="font-normal text-xs text-slate-500 mt-1">{task.description}</div>
-                                </th>
-                            );
+                                <tr key={worker.id} className={`bg-white border-b border-slate-200 ${!hasLogs ? 'opacity-60' : ''}`}>
+                                    <td className={`font-medium text-slate-900 whitespace-nowrap border-r border-slate-200 sticky left-0 bg-white transition-colors duration-150 ${isCompact ? 'px-2 py-1 text-xs' : 'px-4 py-2'}`}>
+                                        {worker.name}
+                                    </td>
+                                    {headerTaskIds.map(taskId => {
+                                        const key = `${worker.id}-${taskId}`;
+                                        return (
+                                            <td key={taskId} className="p-0 text-center font-medium border-r border-slate-200 transition-colors duration-150">
+                                                <input 
+                                                    type="number"
+                                                    value={draftQuantities[key] || ''}
+                                                    onChange={(e) => handleDraftChange(worker.id, taskId, e.target.value)}
+                                                    onBlur={() => handleUpdate(worker.id, taskId)}
+                                                    min="0"
+                                                    step="any"
+                                                    placeholder="-"
+                                                    disabled={isDayFinalized}
+                                                    className={`w-full h-full text-center bg-transparent focus:bg-green-50 focus:outline-none focus:ring-1 focus:ring-sonacos-green rounded-sm disabled:cursor-not-allowed disabled:bg-slate-200/50 ${isCompact ? 'p-1 text-xs' : 'p-2'}`}
+                                                />
+                                            </td>
+                                        );
+                                    })}
+                                </tr>
+                            )
                         })}
-                    </tr>
-                </thead>
-                <tbody>
-                    {workers.map(worker => {
-                        const hasLogs = dataMap.has(worker.id);
-                        return (
-                             <tr key={worker.id} className={`odd:bg-white even:bg-stone-50 ${!hasLogs ? 'opacity-60' : ''} hover:bg-green-50/50`}>
-                                <td className="px-4 py-2 font-medium text-slate-900 whitespace-nowrap border-r border-slate-200 sticky left-0 odd:bg-white even:bg-stone-50 hover:bg-green-50/50">
-                                    {worker.name}
-                                </td>
-                                {headerTaskIds.map(taskId => {
-                                    const key = `${worker.id}-${taskId}`;
-                                    return (
-                                        <td key={taskId} className="p-0 text-center font-medium border-r border-slate-200">
-                                            <input 
-                                                type="number"
-                                                value={draftQuantities[key] || ''}
-                                                onChange={(e) => handleDraftChange(worker.id, taskId, e.target.value)}
-                                                onBlur={() => handleUpdate(worker.id, taskId)}
-                                                min="0"
-                                                step="any"
-                                                placeholder="-"
-                                                disabled={isDayFinalized}
-                                                className="w-full h-full text-center bg-transparent focus:bg-green-50 focus:outline-none focus:ring-1 focus:ring-sonacos-green rounded-sm p-2 disabled:cursor-not-allowed disabled:bg-slate-100/50"
-                                            />
-                                        </td>
-                                    );
-                                })}
-                            </tr>
-                        )
-                    })}
-                </tbody>
-            </table>
+                    </tbody>
+                    <tfoot>
+                        <tr className="bg-sonacos-slate-dark text-white font-bold">
+                            <td className={`border-t-2 border-r border-slate-500 min-w-[160px] sticky left-0 bg-sonacos-slate-dark z-10 ${isCompact ? 'px-2 py-1.5' : 'px-4 py-3'}`}>
+                                Total
+                            </td>
+                            {headerTaskIds.map(taskId => {
+                                const total = columnTotals.get(taskId) || 0;
+                                return (
+                                    <td key={`total-${taskId}`} className={`border-t-2 border-r border-slate-500 text-center ${isCompact ? 'px-1 py-1.5' : 'px-2 py-3'}`}>
+                                        {total > 0 ? total.toFixed(2) : '-'}
+                                    </td>
+                                );
+                            })}
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+            <div aria-hidden="true" className={`absolute top-0 bottom-0 left-0 w-8 bg-gradient-to-r from-slate-200 via-slate-200/70 to-transparent pointer-events-none transition-opacity duration-300 ${showLeftShadow ? 'opacity-100' : 'opacity-0'}`}></div>
+            <div aria-hidden="true" className={`absolute top-0 bottom-0 right-0 w-8 bg-gradient-to-l from-slate-200 via-slate-200/70 to-transparent pointer-events-none transition-opacity duration-300 ${showRightShadow ? 'opacity-100' : 'opacity-0'}`}></div>
         </div>
     );
 };

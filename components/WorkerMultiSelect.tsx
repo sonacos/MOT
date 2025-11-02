@@ -76,7 +76,7 @@ const WorkerMultiSelect: React.FC<WorkerMultiSelectProps> = ({ workerGroups, sel
             </button>
 
             {isOpen && (
-                <div className="absolute z-10 w-full mt-1 bg-white border border-slate-300 rounded-md shadow-lg max-h-80 flex flex-col">
+                <div className="absolute z-30 w-full mt-1 bg-white border border-slate-300 rounded-md shadow-lg max-h-80 flex flex-col">
                     <div className="p-2 border-b border-slate-200">
                         <input
                             type="text"
