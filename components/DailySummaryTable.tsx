@@ -156,6 +156,15 @@ const DailySummaryTable: React.FC<DailySummaryTableProps> = ({ logs, workers, da
     if (logs.length === 0) {
         return <p className="text-center py-8 text-slate-500">Aucune opération enregistrée pour cette date. Utilisez le formulaire ci-dessus pour commencer.</p>
     }
+    
+    // The `workers` prop is already filtered by owner in App.tsx.
+    // The previous filter here was incorrect because the Worker object doesn't have an `owner` property,
+    // causing rows not to show up for non-superadmin users.
+    const workersToShow = workers.filter(w => {
+        // Only show workers that have logs for the current day, or keep all if user is superadmin
+        if (currentUser.role === 'superadmin') return true;
+        return dataMap.has(w.id);
+    });
 
     return (
         <div className="relative">
@@ -179,7 +188,7 @@ const DailySummaryTable: React.FC<DailySummaryTableProps> = ({ logs, workers, da
                         </tr>
                     </thead>
                     <tbody>
-                        {workers.filter(w => w.owner === currentUser.uid || currentUser.role === 'superadmin').map(worker => {
+                        {workersToShow.map(worker => {
                             const hasLogs = dataMap.has(worker.id);
                             return (
                                 <tr key={worker.id} className={`bg-white border-b border-slate-200 ${!hasLogs ? 'opacity-60' : ''}`}>
