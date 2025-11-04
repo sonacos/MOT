@@ -17,6 +17,7 @@ export interface Worker {
   departement: string;
   rib: string;
   cnss: string;
+  bankCode?: string;
   seniorityPercentage: number;
   numberOfChildren: number;
   isArchived?: boolean;

@@ -60,6 +60,7 @@ const ManagementView: React.FC<ManagementViewProps> = ({
     const [workerDepartement, setWorkerDepartement] = useState('');
     const [workerRib, setWorkerRib] = useState('');
     const [workerCnss, setWorkerCnss] = useState('');
+    const [workerBankCode, setWorkerBankCode] = useState('');
     const [workerSeniority, setWorkerSeniority] = useState<number | ''>('');
     const [workerChildren, setWorkerChildren] = useState<number | ''>('');
     const [targetGroupId, setTargetGroupId] = useState<number | ''>('');
@@ -99,6 +100,7 @@ const ManagementView: React.FC<ManagementViewProps> = ({
         setWorkerDepartement(worker ? worker.departement : '');
         setWorkerRib(worker ? worker.rib : '');
         setWorkerCnss(worker ? worker.cnss : '');
+        setWorkerBankCode(worker ? worker.bankCode || '' : '');
         setWorkerSeniority(worker ? worker.seniorityPercentage : '');
         setWorkerChildren(worker ? worker.numberOfChildren : '');
         setWorkerModalOpen(true);
@@ -114,6 +116,7 @@ const ManagementView: React.FC<ManagementViewProps> = ({
         setWorkerDepartement('');
         setWorkerRib('');
         setWorkerCnss('');
+        setWorkerBankCode('');
         setWorkerSeniority('');
         setWorkerChildren('');
     };
@@ -130,6 +133,7 @@ const ManagementView: React.FC<ManagementViewProps> = ({
             departement: workerDepartement.trim(),
             rib: workerRib.trim(),
             cnss: workerCnss.trim(),
+            bankCode: workerBankCode.trim(),
             seniorityPercentage: Number(workerSeniority),
             numberOfChildren: Number(workerChildren),
         };
@@ -263,6 +267,7 @@ const ManagementView: React.FC<ManagementViewProps> = ({
                                                     <div className="text-xs text-slate-400 mt-1 space-y-0.5">
                                                         <p>RIB: {worker.rib || 'N/A'}</p>
                                                         <p>CNSS: {worker.cnss || 'N/A'}</p>
+                                                        {worker.bankCode && <p>CHEZ: {worker.bankCode}</p>}
                                                     </div>
                                                 </td>
                                                 <td className="p-3 text-slate-600 font-mono align-top">
@@ -347,6 +352,10 @@ const ManagementView: React.FC<ManagementViewProps> = ({
                      <div>
                         <label htmlFor="worker-cnss" className="block text-sm font-medium text-slate-700">N° CNSS</label>
                         <input type="text" id="worker-cnss" value={workerCnss} onChange={e => setWorkerCnss(e.target.value)} required className="mt-1 w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-sonacos-green focus:border-sonacos-green" />
+                    </div>
+                     <div>
+                        <label htmlFor="worker-bank-code" className="block text-sm font-medium text-slate-700">Code Banque (CHEZ)</label>
+                        <input type="text" id="worker-bank-code" value={workerBankCode} onChange={e => setWorkerBankCode(e.target.value)} placeholder="Ex: CAM, BCP" className="mt-1 w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-sonacos-green focus:border-sonacos-green" />
                     </div>
                      <div>
                         <label htmlFor="worker-seniority" className="block text-sm font-medium text-slate-700">Pourcentage d'ancienneté (%)</label>
