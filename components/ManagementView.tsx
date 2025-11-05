@@ -10,6 +10,7 @@ interface ManagementViewProps {
     onAddGroup: (groupName: string) => void;
     onEditGroup: (groupId: number, newGroupName: string, ownerId: string) => void;
     onArchiveGroup: (groupId: number, ownerId: string) => void;
+    onDeleteGroupPermanently: (groupId: number, ownerId: string) => void;
     onAddWorker: (groupId: number, workerData: Omit<Worker, 'id'>, ownerId: string) => void;
     onEditWorker: (workerId: number, updatedWorkerData: Omit<Worker, 'id'>) => void;
     onArchiveWorker: (workerId: number) => void;
@@ -35,10 +36,11 @@ const ManagementView: React.FC<ManagementViewProps> = ({
     onAddGroup, 
     onEditGroup, 
     onArchiveGroup,
+    onDeleteGroupPermanently,
     onAddWorker,
     onEditWorker,
     onArchiveWorker,
-    onDeleteWorkerPermanently,
+    onDeleteWorkerPermanently: onDeleteWorker,
     onMoveWorker,
     requestConfirmation,
 }) => {
@@ -178,6 +180,18 @@ const ManagementView: React.FC<ManagementViewProps> = ({
         );
     };
 
+    const handlePermanentDeleteGroup = (group: WorkerGroup) => {
+        requestConfirmation(
+            "Suppression Définitive du Groupe",
+            <div className="space-y-2">
+                <p>Êtes-vous sûr de vouloir supprimer définitivement le groupe "<strong>{group.groupName}</strong>" appartenant à un utilisateur inconnu ?</p>
+                <p className="font-bold text-red-600">Cette action est irréversible et ne peut pas être annulée.</p>
+                <p className="text-sm text-slate-500">Cela ne supprimera pas les saisies existantes des ouvriers qui étaient dans ce groupe.</p>
+            </div>,
+            () => onDeleteGroupPermanently(group.id, group.owner!)
+        );
+    };
+
     const handleArchiveWorker = (worker: Worker) => {
         requestConfirmation(
             "Marquer comme Parti",
@@ -193,7 +207,7 @@ const ManagementView: React.FC<ManagementViewProps> = ({
                 <p>Êtes-vous absolument sûr de vouloir supprimer définitivement l'ouvrier <strong>{worker.name}</strong> ?</p>
                 <p className="font-bold text-red-600">Cette action est irréversible et supprimera également toutes ses saisies et son historique.</p>
             </div>,
-            () => onDeleteWorkerPermanently(worker.id)
+            () => onDeleteWorker(worker.id)
         );
     };
 
@@ -230,22 +244,34 @@ const ManagementView: React.FC<ManagementViewProps> = ({
                             <div>
                                 <h3 className={`text-xl font-bold ${group.isDepartedGroup ? 'text-slate-600' : 'text-sonacos-green'}`}>{group.groupName}</h3>
                                 {currentUser.role === 'superadmin' && group.ownerEmail && (
-                                    <p className="text-xs text-slate-500 mt-1">{group.ownerEmail}</p>
+                                    <p className={`text-xs mt-1 ${group.ownerEmail === 'Inconnu' ? 'text-red-600 font-semibold' : 'text-slate-500'}`}>
+                                        {group.ownerEmail === 'Inconnu' ? 'Propriétaire Inconnu' : group.ownerEmail}
+                                    </p>
                                 )}
                             </div>
-                            {!group.isDepartedGroup && (
-                                <div className="flex items-center gap-2">
-                                    <ActionButton onClick={(e) => { createRipple(e); openWorkerModal(group.id, group.owner!); }} title="Ajouter un ouvrier" className="text-green-700 bg-green-100 hover:bg-green-200">
-                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" /></svg>
-                                    </ActionButton>
-                                    <ActionButton onClick={(e) => { createRipple(e); openGroupModal(group); }} title="Modifier le groupe" className="text-blue-600 bg-blue-100 hover:bg-blue-200">
-                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" /></svg>
-                                    </ActionButton>
-                                    <ActionButton onClick={(e) => { createRipple(e); handleArchiveGroup(group); }} title="Archiver le groupe" className="text-red-600 bg-red-100 hover:bg-red-200">
+                            <div className="flex items-center gap-2">
+                                {currentUser.role === 'superadmin' && group.ownerEmail === 'Inconnu' ? (
+                                    <ActionButton 
+                                        onClick={(e) => { createRipple(e); handlePermanentDeleteGroup(group); }} 
+                                        title="Supprimer le groupe définitivement" 
+                                        className="text-red-600 bg-red-100 hover:bg-red-200"
+                                    >
                                         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
                                     </ActionButton>
-                                </div>
-                            )}
+                                ) : !group.isDepartedGroup ? (
+                                    <>
+                                        <ActionButton onClick={(e) => { createRipple(e); openWorkerModal(group.id, group.owner!); }} title="Ajouter un ouvrier" className="text-green-700 bg-green-100 hover:bg-green-200">
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" /></svg>
+                                        </ActionButton>
+                                        <ActionButton onClick={(e) => { createRipple(e); openGroupModal(group); }} title="Modifier le groupe" className="text-blue-600 bg-blue-100 hover:bg-blue-200">
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" /></svg>
+                                        </ActionButton>
+                                        <ActionButton onClick={(e) => { createRipple(e); handleArchiveGroup(group); }} title="Archiver le groupe" className="text-red-600 bg-red-100 hover:bg-red-200">
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
+                                        </ActionButton>
+                                    </>
+                                ) : null}
+                            </div>
                         </div>
 
                          <div className="overflow-x-auto">

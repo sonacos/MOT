@@ -1,5 +1,4 @@
 import React, { useState, useMemo, useRef } from 'react';
-// FIX: Import User type to use in props
 import { DailyLog, WorkerGroup, User } from '../types';
 import { TASK_GROUPS, TASK_MAP } from '../constants';
 import WorkerMultiSelect from './WorkerMultiSelect';
@@ -20,7 +19,6 @@ interface DailyEntryViewProps {
     workerGroups: WorkerGroup[];
     entryDate: string;
     setEntryDate: (date: string) => void;
-    // FIX: Add currentUser prop to fix type error from App.tsx
     currentUser: User;
     deleteLogsByDate: (date: string) => void;
     requestConfirmation: (title: string, message: string | React.ReactNode, onConfirm: () => void) => void;
@@ -50,6 +48,8 @@ const DailyEntryView: React.FC<DailyEntryViewProps> = ({ logs, addLog, deleteLog
     useGlow(overallCardRef);
     
     const allWorkers = useMemo(() => workerGroups.flatMap(g => g.workers), [workerGroups]);
+    const allActiveWorkers = useMemo(() => workerGroups.filter(g => !g.isArchived).flatMap(g => g.workers.filter(w => !w.isArchived)), [workerGroups]);
+
 
     const activeWorkerGroups = useMemo(() => 
         workerGroups
@@ -62,7 +62,7 @@ const DailyEntryView: React.FC<DailyEntryViewProps> = ({ logs, addLog, deleteLog
     [workerGroups]);
 
     const isDayFinalized = useMemo(() => finalizedDates.includes(entryDate), [finalizedDates, entryDate]);
-
+    
     const handleAddEntry = (e: React.FormEvent) => {
         e.preventDefault();
         if (isDayFinalized) return;
@@ -147,7 +147,7 @@ const DailyEntryView: React.FC<DailyEntryViewProps> = ({ logs, addLog, deleteLog
     const handleExportDailyCSV = () => {
         const { headerTaskIds, dataMap } = dailySummaryData;
         const headers = ['Ouvrier', ...headerTaskIds.map(id => `"${TASK_MAP.get(id)?.description.replace(/"/g, '""') || `Tâche ${id}`}"`)];
-        const rows = allWorkers
+        const rows = allActiveWorkers
             .filter(w => dataMap.has(w.id))
             .map(worker => {
                 const rowData = [`"${worker.name}"`];
@@ -181,7 +181,7 @@ const DailyEntryView: React.FC<DailyEntryViewProps> = ({ logs, addLog, deleteLog
     const handleExportOverallCSV = () => {
         const { headerTaskIds, dataMap } = overallSummaryData;
         const headers = ['Ouvrier', ...headerTaskIds.map(id => `"${TASK_MAP.get(id)?.description.replace(/"/g, '""') || `Tâche ${id}`}"`)];
-        const rows = allWorkers
+        const rows = allActiveWorkers
             .filter(w => dataMap.has(w.id))
             .map(worker => {
                 const rowData = [`"${worker.name}"`];
@@ -325,7 +325,7 @@ const DailyEntryView: React.FC<DailyEntryViewProps> = ({ logs, addLog, deleteLog
                     </div>
                 </div>
                  <div id="overall-summary-table-container">
-                    <OverallSummaryTable allLogs={logs} workers={allWorkers} isCompact={isCompactMode} />
+                    <OverallSummaryTable allLogs={logs} workers={allActiveWorkers} isCompact={isCompactMode} />
                  </div>
             </div>
         </div>

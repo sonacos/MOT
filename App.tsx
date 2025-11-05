@@ -3,17 +3,17 @@ import { DailyLog, WorkerGroup, Worker, WorkedDays, User, UserRole } from './typ
 import Sidebar from './components/Sidebar';
 import TopBar from './components/TopBar';
 import DailyEntryView from './components/DailyEntryView';
-import ReportView from './components/ReportView';
 import ManagementView from './components/ManagementView';
 import PayrollView from './components/PayrollView';
-import WorkerDaysSection from './components/WorkerDaysSection';
 import TransferOrderView from './components/TransferOrderView';
 import UserManagementView from './components/UserManagementView';
+import SeasonView from './components/SeasonView';
 import LoginView from './components/LoginView';
 import ConfirmationModal from './components/ConfirmationModal';
 import { unlockAudio } from './utils/audioUtils';
 import { auth, db } from './firebaseConfig';
 import { onAuthStateChanged, signOut } from "firebase/auth";
+import FinalReportView from './components/FinalReportView';
 import {
     collection,
     doc,
@@ -33,7 +33,7 @@ import {
 const DEPARTED_GROUP_ID = 9999;
 
 const App: React.FC = () => {
-    type View = 'entry' | 'report' | 'management' | 'payroll' | 'workerDays' | 'transferOrder' | 'userManagement';
+    type View = 'entry' | 'management' | 'payroll' | 'transferOrder' | 'userManagement' | 'season' | 'finalReport';
     const [currentView, setCurrentView] = useState<View>('entry');
     const [isAnimatingOut, setIsAnimatingOut] = useState(false);
     const [entryDate, setEntryDate] = useState(new Date().toISOString().split('T')[0]);
@@ -375,6 +375,21 @@ const App: React.FC = () => {
             if (currentUser) await fetchData(currentUser); // Refresh data after archiving
         }
     };
+    
+    const deleteGroupPermanently = async (groupId: number, ownerId: string) => {
+        if (!currentUser || currentUser.role !== 'superadmin') {
+            alert("Action non autorisée.");
+            return;
+        }
+        try {
+            await deleteDoc(doc(db, 'users', ownerId, 'workerGroups', String(groupId)));
+            await fetchData(currentUser);
+        } catch (error) {
+            console.error("Error deleting group permanently:", error);
+            alert("Une erreur est survenue lors de la suppression du groupe.");
+        }
+    };
+
 
     const addWorker = async (groupId: number, workerData: Omit<Worker, 'id'>, ownerId: string) => {
         if (!currentUser) return;
@@ -500,14 +515,45 @@ const App: React.FC = () => {
         if (currentUser) await fetchData(currentUser);
     };
       
+    const deleteUserOnly = async (userId: string) => {
+        if (currentUser?.role !== 'superadmin' || currentUser.uid === userId) {
+            alert("Action non autorisée.");
+            return;
+        }
+        await deleteDoc(doc(db, 'users', userId));
+        if (currentUser) await fetchData(currentUser);
+    };
+
+    const deleteUserAndData = async (userId: string) => {
+        if (currentUser?.role !== 'superadmin' || currentUser.uid === userId) {
+            alert("Action non autorisée.");
+            return;
+        }
+        
+        const batch = writeBatch(db);
+
+        const collectionsToDelete = ['dailyLogs', 'workerGroups', 'workedDays'];
+        for (const collectionName of collectionsToDelete) {
+            const snapshot = await getDocs(collection(db, 'users', userId, collectionName));
+            snapshot.forEach(doc => batch.delete(doc.ref));
+        }
+        
+        const userDocRef = doc(db, 'users', userId);
+        batch.delete(userDocRef);
+
+        await batch.commit();
+
+        if (currentUser) await fetchData(currentUser);
+    };
+
     const viewTitles: Record<View, string> = {
         entry: 'Saisie Journalière des Opérations',
-        report: 'Génération de Rapports d\'Activité',
+        finalReport: 'État Bi-mensuel Final',
         management: 'Gestion des Ouvriers & Groupes',
         payroll: 'Décompte des Rémunérations',
-        workerDays: 'Gestion des Jours de Travail',
         transferOrder: 'Ordre de Virement Bancaire',
         userManagement: 'Gestion des Utilisateurs',
+        season: 'Cumul de la Saison',
     };
 
     const handleViewChange = useCallback((view: View) => {
@@ -553,31 +599,37 @@ const App: React.FC = () => {
                 <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
                     <div className={`transition-opacity duration-150 ${isAnimatingOut ? 'opacity-0' : 'opacity-100'}`}>
                         <div className="print:hidden">
-                            {currentView === 'entry' && <DailyEntryView logs={userLogs} addLog={addLog} deleteLog={deleteLog} finalizedDates={finalizedDates} onToggleFinalize={toggleFinalizeDate} workerGroups={userWorkerGroups} entryDate={entryDate} setEntryDate={setEntryDate} currentUser={currentUser} deleteLogsByDate={deleteLogsByDate} requestConfirmation={requestConfirmation}/>}
-                            {currentView === 'report' && <ReportView allLogs={logs} workerGroups={workerGroups} />}
+                            {currentView === 'entry' && <DailyEntryView logs={userLogs} addLog={addLog} deleteLog={deleteLog} finalizedDates={finalizedDates} onToggleFinalize={toggleFinalizeDate} workerGroups={userWorkerGroups} entryDate={entryDate} setEntryDate={setEntryDate} currentUser={currentUser} deleteLogsByDate={deleteLogsByDate} requestConfirmation={requestConfirmation} />}
+                            {currentView === 'finalReport' && <FinalReportView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} onSaveWorkedDays={saveWorkedDays} />}
                             {currentView === 'payroll' && <PayrollView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} />}
-                            {currentView === 'workerDays' && <WorkerDaysSection workerGroups={userWorkerGroups} workedDays={userWorkedDays} onSave={saveWorkedDays} />}
                             {currentView === 'transferOrder' && <TransferOrderView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} />}
+                            {currentView === 'season' && <SeasonView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} />}
                             {currentView === 'management' && (
                                 <ManagementView 
                                     workerGroups={userWorkerGroups} onAddGroup={addGroup} onEditGroup={editGroup} onArchiveGroup={archiveGroup}
                                     onAddWorker={addWorker} onEditWorker={editWorker} 
                                     onArchiveWorker={archiveWorker} onDeleteWorkerPermanently={deleteWorkerPermanently}
                                     onMoveWorker={moveWorker}
+                                    onDeleteGroupPermanently={deleteGroupPermanently}
                                     currentUser={currentUser}
                                     requestConfirmation={requestConfirmation}
                                 />
                             )}
                             {currentView === 'userManagement' && currentUser.role === 'superadmin' && (
                                 <UserManagementView 
-                                    users={users} onFetchUsers={() => fetchData(currentUser)} currentUser={currentUser}
+                                    users={users} 
+                                    onFetchUsers={() => fetchData(currentUser)} 
+                                    currentUser={currentUser}
+                                    onDeleteUserOnly={deleteUserOnly}
+                                    onDeleteUserAndData={deleteUserAndData}
                                 />
                             )}
                         </div>
                         <div className="hidden print:block">
-                            {currentView === 'report' && <ReportView allLogs={logs} workerGroups={workerGroups} isPrinting />}
+                            {currentView === 'finalReport' && <FinalReportView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} onSaveWorkedDays={saveWorkedDays} isPrinting />}
                             {currentView === 'payroll' && <PayrollView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} isPrinting />}
                             {currentView === 'transferOrder' && <TransferOrderView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} isPrinting />}
+                            {currentView === 'season' && <SeasonView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} isPrinting />}
                         </div>
                     </div>
                 </main>

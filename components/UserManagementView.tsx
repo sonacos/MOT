@@ -10,13 +10,18 @@ import { doc, setDoc, updateDoc } from 'firebase/firestore';
 
 interface UserManagementViewProps {
     users: User[];
-    onFetchUsers: () => void; // To refresh user list after an action
+    onFetchUsers: () => void;
     currentUser: User;
+    onDeleteUserOnly: (userId: string) => void;
+    onDeleteUserAndData: (userId: string) => void;
 }
 
-const UserManagementView: React.FC<UserManagementViewProps> = ({ users, onFetchUsers, currentUser }) => {
+const UserManagementView: React.FC<UserManagementViewProps> = ({ users, onFetchUsers, currentUser, onDeleteUserOnly, onDeleteUserAndData }) => {
     const [isModalOpen, setModalOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<User | null>(null);
+    const [isDeleteModalOpen, setDeleteModalOpen] = useState(false);
+    const [userToDelete, setUserToDelete] = useState<User | null>(null);
+    const [deleteOption, setDeleteOption] = useState<'user' | 'data'>('user');
 
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -27,13 +32,25 @@ const UserManagementView: React.FC<UserManagementViewProps> = ({ users, onFetchU
         setEditingUser(user);
         setEmail(user ? user.email : '');
         setRole(user ? user.role : 'user');
-        setPassword(''); // Always clear password field
+        setPassword('');
         setModalOpen(true);
     };
 
     const closeModal = () => {
         setModalOpen(false);
         setEditingUser(null);
+    };
+    
+    const openDeleteModal = (user: User) => {
+        playClickSound();
+        setUserToDelete(user);
+        setDeleteOption('user');
+        setDeleteModalOpen(true);
+    };
+
+    const closeDeleteModal = () => {
+        setDeleteModalOpen(false);
+        setUserToDelete(null);
     };
 
     const handleSubmit = async (e: FormEvent) => {
@@ -44,55 +61,41 @@ const UserManagementView: React.FC<UserManagementViewProps> = ({ users, onFetchU
         }
 
         if (editingUser) {
-            // Editing user role
             const userDocRef = doc(db, 'users', editingUser.uid);
             await updateDoc(userDocRef, { role });
-            // Note: Changing email/password is complex and requires re-authentication, so we are only handling role changes here.
         } else {
-            // Creating a new user
             if (!password.trim()) {
                 alert("Le mot de passe est requis pour un nouvel utilisateur.");
                 return;
             }
             try {
-                // To create a user without signing out the current admin, we initialize a temporary secondary Firebase app.
-                // A random name prevents conflicts during hot-reloading in development.
                 const tempAppName = 'secondary-user-creation-' + Date.now();
                 const tempApp = initializeApp(auth.app.options, tempAppName);
                 const tempAuth = getAuth(tempApp);
-
                 const userCredential = await createUserWithEmailAndPassword(tempAuth, email.trim(), password.trim());
                 const newUser = userCredential.user;
-
                 if (newUser) {
-                    // Now, create the user document in our main Firestore database
-                    await setDoc(doc(db, 'users', newUser.uid), {
-                        email: newUser.email,
-                        role: role,
-                    });
-                    
-                    // Sign out the newly created user from the temporary auth instance
+                    await setDoc(doc(db, 'users', newUser.uid), { email: newUser.email, role: role });
                     await signOutTemp(tempAuth);
                 }
             } catch (error: any) {
-                if (error.code === 'auth/email-already-in-use') {
-                    alert('Cette adresse e-mail est déjà utilisée.');
-                } else {
-                    alert('Erreur lors de la création de l\'utilisateur.');
-                    console.error(error);
-                }
-                return; // Stop execution on error
+                alert(error.code === 'auth/email-already-in-use' ? 'Cette adresse e-mail est déjà utilisée.' : 'Erreur lors de la création de l\'utilisateur.');
+                return;
             }
         }
-        onFetchUsers(); // Refresh the list from Firestore
+        onFetchUsers();
         closeModal();
     };
     
-    // Deleting users from the client is a security risk and often requires admin privileges via a backend.
-    // So the delete button is removed.
-    const handleDelete = (userId: string) => {
-       alert("La suppression des utilisateurs depuis l'interface n'est pas autorisée pour des raisons de sécurité.");
-    }
+    const handleConfirmDelete = () => {
+        if (!userToDelete) return;
+        if (deleteOption === 'user') {
+            onDeleteUserOnly(userToDelete.uid);
+        } else {
+            onDeleteUserAndData(userToDelete.uid);
+        }
+        closeDeleteModal();
+    };
 
     return (
         <div className="bg-white p-6 rounded-lg shadow-lg border border-slate-200">
@@ -130,7 +133,7 @@ const UserManagementView: React.FC<UserManagementViewProps> = ({ users, onFetchU
                                         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" /></svg>
                                     </button>
                                     {user.uid !== currentUser.uid && (
-                                        <button disabled title="La suppression est désactivée" onClick={() => handleDelete(user.uid)} className="p-2 text-slate-400 hover:bg-red-100 rounded-full transition-colors ml-2 cursor-not-allowed">
+                                        <button onClick={() => openDeleteModal(user)} title="Supprimer l'utilisateur" className="p-2 text-slate-500 hover:text-red-600 hover:bg-red-100 rounded-full transition-colors ml-2">
                                             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
                                         </button>
                                     )}
@@ -165,6 +168,56 @@ const UserManagementView: React.FC<UserManagementViewProps> = ({ users, onFetchU
                         <button type="submit" className="px-4 py-2 bg-sonacos-green text-white font-semibold rounded-lg hover:bg-green-800">{editingUser ? 'Enregistrer' : 'Créer'}</button>
                     </div>
                 </form>
+            </Modal>
+            
+            <Modal isOpen={isDeleteModalOpen} onClose={closeDeleteModal} title={`Supprimer l'utilisateur ${userToDelete?.email}`}>
+                <div className="space-y-4">
+                    <p className="text-sm text-slate-600">
+                        Veuillez choisir une option de suppression. Cette action est irréversible.
+                    </p>
+                    
+                    <fieldset className="space-y-3">
+                        <legend className="sr-only">Options de suppression</legend>
+                        <div 
+                            onClick={() => setDeleteOption('user')}
+                            className={`relative flex items-start p-3 border rounded-lg cursor-pointer transition-colors ${deleteOption === 'user' ? 'bg-red-50 border-red-300 ring-2 ring-red-200' : 'border-slate-300'}`}
+                        >
+                            <div className="flex items-center h-5">
+                                <input id="delete-user-only" name="delete-option" type="radio" checked={deleteOption === 'user'} onChange={() => {}} className="focus:ring-red-500 h-4 w-4 text-red-600 border-gray-300" />
+                            </div>
+                            <div className="ml-3 text-sm">
+                                <label htmlFor="delete-user-only" className="font-medium text-slate-900">Supprimer l'utilisateur uniquement</label>
+                                <p className="text-slate-500">
+                                    Les données de l'utilisateur (saisies, groupes, etc.) seront conservées mais ne seront plus associées à un utilisateur actif. L'administrateur pourra toujours voir ces données.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div 
+                            onClick={() => setDeleteOption('data')}
+                            className={`relative flex items-start p-3 border rounded-lg cursor-pointer transition-colors ${deleteOption === 'data' ? 'bg-red-50 border-red-300 ring-2 ring-red-200' : 'border-slate-300'}`}
+                        >
+                            <div className="flex items-center h-5">
+                                <input id="delete-user-data" name="delete-option" type="radio" checked={deleteOption === 'data'} onChange={() => {}} className="focus:ring-red-500 h-4 w-4 text-red-600 border-gray-300" />
+                            </div>
+                            <div className="ml-3 text-sm">
+                                <label htmlFor="delete-user-data" className="font-medium text-slate-900">Supprimer l'utilisateur ET toutes ses données</label>
+                                <p className="font-bold text-red-600">
+                                    Attention: Toutes les saisies, les groupes d'ouvriers, et les jours de travail créés par cet utilisateur seront définitivement supprimés.
+                                </p>
+                            </div>
+                        </div>
+                    </fieldset>
+
+                    <div className="text-xs text-slate-500 pt-2 border-t mt-4">
+                        <strong>Note :</strong> La suppression ne supprime que les données de cette application. Le compte de connexion (Firebase Auth) de l'utilisateur ne sera pas supprimé et devra être géré manuellement dans la console Firebase pour des raisons de sécurité.
+                    </div>
+
+                    <div className="flex justify-end gap-3 pt-2">
+                        <button type="button" onClick={(e) => { createRipple(e); closeDeleteModal(); }} className="px-4 py-2 bg-slate-200 text-slate-800 font-semibold rounded-lg hover:bg-slate-300">Annuler</button>
+                        <button type="button" onClick={(e) => { createRipple(e); handleConfirmDelete(); }} className="px-4 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700">Confirmer la Suppression</button>
+                    </div>
+                </div>
             </Modal>
         </div>
     );

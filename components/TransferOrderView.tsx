@@ -28,7 +28,7 @@ const TransferOrderView: React.FC<TransferOrderViewProps> = ({ allLogs, workerGr
     useGlow(optionsCardRef);
     useGlow(reportCardRef);
 
-    const allWorkers = useMemo(() => workerGroups.flatMap(g => g.workers.filter(w => !w.isArchived)), [workerGroups]);
+    const allWorkers = useMemo(() => workerGroups.filter(g => !g.isArchived).flatMap(g => g.workers.filter(w => !w.isArchived)), [workerGroups]);
 
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
@@ -36,34 +36,38 @@ const TransferOrderView: React.FC<TransferOrderViewProps> = ({ allLogs, workerGr
     const [city, setCity] = useState('Taza');
     const [orderDate, setOrderDate] = useState(new Date().toISOString().split('T')[0]);
     const [reportData, setReportData] = useState<TransferOrderData[] | null>(null);
-    const [additionalInputs, setAdditionalInputs] = useState<Record<number, { avance: string }>>({});
-
-    const handleAvanceChange = (workerId: number, value: string) => {
-        setAdditionalInputs(prev => ({
-            ...prev,
-            [workerId]: {
-                ...(prev[workerId] || { avance: '0' }),
-                avance: value
-            }
-        }));
-    };
     
     const getDaysWorkedForPeriod = (workerId: number, start: string, end: string): number => {
-        const startDate = new Date(start + 'T00:00:00');
-        const endDate = new Date(end + 'T00:00:00');
-        let totalDays = 0;
+        const startDate = new Date(start + 'T00:00:00Z');
+        const endDate = new Date(end + 'T00:00:00Z');
 
-        const relevantEntries = workedDays.filter(wd => {
-            if (wd.workerId !== workerId) return false;
-            const periodStartDay = wd.period === 'first' ? 1 : 16;
-            const periodDate = new Date(wd.year, wd.month - 1, periodStartDay);
-            return periodDate >= new Date(startDate.getFullYear(), startDate.getMonth(), 1) &&
-                   periodDate <= new Date(endDate.getFullYear(), endDate.getMonth() + 1, 0);
-        });
+        if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) return 0;
 
-        for (const entry of relevantEntries) {
-             totalDays += entry.days;
+        const uniquePeriods = new Set<string>();
+        let currentDate = new Date(startDate);
+
+        while (currentDate <= endDate) {
+            const year = currentDate.getUTCFullYear();
+            const month = currentDate.getUTCMonth() + 1;
+            const day = currentDate.getUTCDate();
+            const period = day <= 15 ? 'first' : 'second';
+            uniquePeriods.add(`${year}-${month}-${period}`);
+            currentDate.setUTCDate(currentDate.getUTCDate() + 1);
         }
+        
+        let totalDays = 0;
+        uniquePeriods.forEach(periodKey => {
+            const [year, month, period] = periodKey.split('-');
+            const entry = workedDays.find(wd => 
+                wd.workerId === workerId &&
+                wd.year === parseInt(year) &&
+                wd.month === parseInt(month) &&
+                wd.period === period
+            );
+            if (entry) {
+                totalDays += entry.days;
+            }
+        });
 
         return totalDays;
     };
@@ -91,14 +95,10 @@ const TransferOrderView: React.FC<TransferOrderViewProps> = ({ allLogs, workerGr
             }
         });
 
-        const initialInputs: Record<number, { avance: string }> = {};
-
         // FIX: Explicitly type the map callback parameter 'workerId' as a number to resolve TS error.
         const processedData: TransferOrderData[] = Array.from(allRelevantWorkerIds).map((workerId: number) => {
             const worker = allWorkers.find(w => w.id === workerId);
             if (!worker) return null;
-            
-            initialInputs[workerId] = { avance: '0' };
             
             const workerLogs = logsInPeriod.filter(l => l.workerId === workerId);
             const joursTravailles = getDaysWorkedForPeriod(workerId, startDate, endDate);
@@ -119,9 +119,7 @@ const TransferOrderView: React.FC<TransferOrderViewProps> = ({ allLogs, workerGr
             const indemniteLait = joursTravailles * laitPricePerDay;
             const primePanier = joursTravailles * panierPricePerDay;
             
-            const avance = parseFloat(additionalInputs[workerId]?.avance || '0') || 0;
-
-            const netPay = totalBrut - retenu + indemniteLait + primePanier - avance;
+            const netPay = totalBrut - retenu + indemniteLait + primePanier;
 
             return { worker, netPay };
     
@@ -129,7 +127,6 @@ const TransferOrderView: React.FC<TransferOrderViewProps> = ({ allLogs, workerGr
         
         processedData.sort((a, b) => a.worker.name.localeCompare(b.worker.name));
 
-        setAdditionalInputs(initialInputs);
         setReportData(processedData);
     };
 
@@ -244,29 +241,6 @@ const TransferOrderView: React.FC<TransferOrderViewProps> = ({ allLogs, workerGr
                      <div className="lg:col-span-4 md:col-span-2">
                         <label className="block text-sm font-medium text-slate-700 mb-1.5">Filtrer par Ouvrier (Optionnel, tous par défaut)</label>
                          <WorkerMultiSelect workerGroups={workerGroups} selectedWorkerIds={selectedWorkerIds} onChange={setSelectedWorkerIds}/>
-                    </div>
-                     <div className="lg:col-span-4 md:col-span-2 space-y-2">
-                        <h3 className="text-sm font-medium text-slate-700">Avances (Optionnel)</h3>
-                        <p className="text-xs text-slate-500">
-                           Saisissez ici les avances sur salaire pour la période sélectionnée. Celles-ci seront déduites du montant net à payer.
-                           Cette information n'est pas sauvegardée et doit être saisie avant chaque génération.
-                        </p>
-                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 max-h-48 overflow-y-auto pt-2">
-                           {allWorkers.filter(w => selectedWorkerIds.length === 0 || selectedWorkerIds.includes(w.id)).map(worker => (
-                               <div key={worker.id}>
-                                   <label htmlFor={`avance-${worker.id}`} className="block text-xs font-medium text-slate-600 truncate">{worker.name}</label>
-                                   <input
-                                       type="number"
-                                       id={`avance-${worker.id}`}
-                                       value={additionalInputs[worker.id]?.avance || ''}
-                                       onChange={e => handleAvanceChange(worker.id, e.target.value)}
-                                       min="0"
-                                       placeholder="0.00"
-                                       className="mt-1 w-full p-1.5 border border-slate-300 rounded-md shadow-sm text-sm focus:ring-sonacos-green focus:border-sonacos-green"
-                                   />
-                               </div>
-                           ))}
-                        </div>
                     </div>
                 </div>
                  <div className="flex justify-end mt-6">
