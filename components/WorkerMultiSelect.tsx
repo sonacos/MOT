@@ -13,7 +13,11 @@ const WorkerMultiSelect: React.FC<WorkerMultiSelectProps> = ({ workerGroups, sel
     const [searchTerm, setSearchTerm] = useState('');
     const wrapperRef = useRef<HTMLDivElement>(null);
     
-    const allWorkerIds = useMemo(() => workerGroups.flatMap(g => g.workers.map(w => w.id)), [workerGroups]);
+    const allWorkerIds = useMemo(() => 
+        workerGroups
+            .filter(g => g && Array.isArray(g.workers))
+            .flatMap(g => g.workers.map(w => w.id)), 
+    [workerGroups]);
 
     useEffect(() => {
         function handleClickOutside(event: MouseEvent) {
@@ -47,12 +51,23 @@ const WorkerMultiSelect: React.FC<WorkerMultiSelectProps> = ({ workerGroups, sel
         onChange(newSelection);
     };
 
-    const filteredGroups = useMemo(() => workerGroups.map(group => ({
-        ...group,
-        workers: group.workers.filter(worker =>
-            worker.name.toLowerCase().includes(searchTerm.toLowerCase())
-        )
-    })).filter(group => group.workers.length > 0), [workerGroups, searchTerm]);
+    const filteredGroups = useMemo(() => {
+        if (!Array.isArray(workerGroups)) return [];
+        return workerGroups
+            .map(group => {
+                if (!group || !Array.isArray(group.workers)) {
+                    return { ...group, workers: [] };
+                }
+                return {
+                    ...group,
+                    workers: group.workers.filter(worker =>
+                        worker && worker.name && typeof worker.name === 'string' &&
+                        worker.name.toLowerCase().includes(searchTerm.toLowerCase())
+                    )
+                };
+            })
+            .filter(group => group.workers && group.workers.length > 0);
+    }, [workerGroups, searchTerm]);
 
     const selectionText = selectedWorkerIds.length > 0
         ? `${selectedWorkerIds.length} ouvrier(s) sélectionné(s)`

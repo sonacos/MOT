@@ -148,7 +148,11 @@ const FinalReportView: React.FC<FinalReportViewProps> = ({ allLogs, workerGroups
     useGlow(daysEntryCardRef);
     useGlow(reportCardRef);
 
-    const allActiveWorkers = useMemo(() => workerGroups.filter(g => !g.isArchived).flatMap(g => g.workers.filter(w => !w.isArchived)), [workerGroups]);
+    const allActiveWorkers = useMemo(() => 
+        workerGroups
+            .filter(g => g && !g.isArchived && Array.isArray(g.workers))
+            .flatMap(g => g.workers.filter(w => w && !w.isArchived))
+    , [workerGroups]);
 
     const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
     const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);

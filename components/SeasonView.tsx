@@ -37,6 +37,20 @@ const SeasonView: React.FC<SeasonViewProps> = ({ allLogs, workerGroups, workedDa
     useGlow(reportCardRef);
     
     const { startDate, endDate, startYear, endYear } = useMemo(() => getCurrentSeason(), []);
+    
+    const workerOwnerMap = useMemo(() => {
+        const map = new Map<number, string>();
+        workerGroups.forEach(group => {
+            if (group && group.owner && Array.isArray(group.workers)) {
+                group.workers.forEach(worker => {
+                    if (worker) {
+                        map.set(worker.id, group.owner!);
+                    }
+                });
+            }
+        });
+        return map;
+    }, [workerGroups]);
 
     const { summaryData, headerTaskIds, columnTotals } = useMemo(() => {
         const logsForSeason = allLogs.filter(log => log.date >= startDate && log.date <= endDate);
@@ -50,8 +64,8 @@ const SeasonView: React.FC<SeasonViewProps> = ({ allLogs, workerGroups, workedDa
         });
 
         const activeWorkers = workerGroups
-            .filter(g => !g.isArchived)
-            .flatMap(g => g.workers.filter(w => !w.isArchived));
+            .filter(g => g && !g.isArchived && Array.isArray(g.workers))
+            .flatMap(g => g.workers.filter(w => w && !w.isArchived));
 
         const data = new Map<number, { worker: Worker; tasks: Map<number, number>; workedDays: number }>();
         
@@ -64,7 +78,8 @@ const SeasonView: React.FC<SeasonViewProps> = ({ allLogs, workerGroups, workedDa
         });
 
         logsForSeason.forEach(log => {
-            if (data.has(log.workerId)) {
+            const workerOwnerId = workerOwnerMap.get(log.workerId);
+            if (data.has(log.workerId) && log.owner === workerOwnerId) {
                 const workerData = data.get(log.workerId)!;
                 const currentQty = workerData.tasks.get(log.taskId) || 0;
                 workerData.tasks.set(log.taskId, currentQty + log.quantity);
@@ -72,7 +87,8 @@ const SeasonView: React.FC<SeasonViewProps> = ({ allLogs, workerGroups, workedDa
         });
 
         workedDaysForSeason.forEach(wd => {
-            if (data.has(wd.workerId)) {
+            const workerOwnerId = workerOwnerMap.get(wd.workerId);
+            if (data.has(wd.workerId) && wd.owner === workerOwnerId) {
                 const workerData = data.get(wd.workerId)!;
                 workerData.workedDays += wd.days;
             }
@@ -101,7 +117,7 @@ const SeasonView: React.FC<SeasonViewProps> = ({ allLogs, workerGroups, workedDa
         });
 
         return { summaryData: finalData, headerTaskIds: sortedTaskIds, columnTotals: totals };
-    }, [allLogs, workerGroups, workedDays, startDate, endDate, startYear, endYear]);
+    }, [allLogs, workerGroups, workedDays, startDate, endDate, startYear, endYear, workerOwnerMap]);
 
     const checkShadows = useCallback(() => {
         const el = scrollContainerRef.current;

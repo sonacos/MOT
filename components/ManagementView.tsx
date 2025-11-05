@@ -148,7 +148,7 @@ const ManagementView: React.FC<ManagementViewProps> = ({
     };
 
     const findWorkerGroup = (workerId: number) => {
-        return workerGroups.find(g => g.workers.some(w => w.id === workerId));
+        return workerGroups.find(g => g && Array.isArray(g.workers) && g.workers.some(w => w && w.id === workerId));
     }
 
     const openMoveWorkerModal = (worker: Worker) => {
@@ -219,7 +219,7 @@ const ManagementView: React.FC<ManagementViewProps> = ({
     );
 
     const sortedGroups = workerGroups
-        .filter(group => !group.isArchived || group.isDepartedGroup)
+        .filter(group => group && (!group.isArchived || group.isDepartedGroup))
         .sort((a, b) => {
             if (a.isDepartedGroup) return 1;
             if (b.isDepartedGroup) return -1;
@@ -238,7 +238,9 @@ const ManagementView: React.FC<ManagementViewProps> = ({
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
-                {sortedGroups.map(group => (
+                {sortedGroups.map(group => {
+                    const workersInGroup = Array.isArray(group.workers) ? group.workers : [];
+                    return (
                     <GroupCard group={group} key={`${group.id}-${group.owner}`}>
                          <div className={`p-4 border-b border-slate-200 flex justify-between items-center rounded-t-lg ${group.isDepartedGroup ? 'bg-slate-200' : 'bg-slate-50'}`}>
                             <div>
@@ -275,7 +277,7 @@ const ManagementView: React.FC<ManagementViewProps> = ({
                         </div>
 
                          <div className="overflow-x-auto">
-                            {group.workers.filter(w => group.isDepartedGroup ? true : !w.isArchived).length > 0 ? (
+                            {workersInGroup.filter(w => w && (group.isDepartedGroup ? true : !w.isArchived)).length > 0 ? (
                                 <table className="w-full text-sm">
                                     <thead className="bg-stone-100 text-slate-600">
                                         <tr>
@@ -285,7 +287,7 @@ const ManagementView: React.FC<ManagementViewProps> = ({
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {group.workers.filter(w => group.isDepartedGroup ? true : !w.isArchived).map((worker, index) => (
+                                        {workersInGroup.filter(w => w && (group.isDepartedGroup ? true : !w.isArchived)).map((worker, index) => (
                                             <tr key={worker.id} className="odd:bg-white even:bg-stone-50 hover:bg-green-50/50" onMouseEnter={playHoverSound}>
                                                 <td className="p-3 align-top">
                                                     <p className="font-medium text-slate-800">{worker.name}</p>
@@ -334,7 +336,7 @@ const ManagementView: React.FC<ManagementViewProps> = ({
                             )}
                         </div>
                     </GroupCard>
-                ))}
+                )})}
             </div>
 
             <Modal isOpen={isGroupModalOpen} onClose={closeGroupModal} title={editingGroup ? "Modifier le Groupe" : "Nouveau Groupe"}>

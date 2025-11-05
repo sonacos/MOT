@@ -28,7 +28,25 @@ const TransferOrderView: React.FC<TransferOrderViewProps> = ({ allLogs, workerGr
     useGlow(optionsCardRef);
     useGlow(reportCardRef);
 
-    const allWorkers = useMemo(() => workerGroups.filter(g => !g.isArchived).flatMap(g => g.workers.filter(w => !w.isArchived)), [workerGroups]);
+    const workerOwnerMap = useMemo(() => {
+        const map = new Map<number, string>();
+        workerGroups.forEach(group => {
+            if (group && group.owner && Array.isArray(group.workers)) {
+                group.workers.forEach(worker => {
+                    if (worker) {
+                        map.set(worker.id, group.owner!);
+                    }
+                });
+            }
+        });
+        return map;
+    }, [workerGroups]);
+
+    const allWorkers = useMemo(() => 
+        workerGroups
+            .filter(g => g && !g.isArchived && Array.isArray(g.workers))
+            .flatMap(g => g.workers.filter(w => w && !w.isArchived))
+    , [workerGroups]);
 
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
@@ -40,6 +58,7 @@ const TransferOrderView: React.FC<TransferOrderViewProps> = ({ allLogs, workerGr
     const getDaysWorkedForPeriod = (workerId: number, start: string, end: string): number => {
         const startDate = new Date(start + 'T00:00:00Z');
         const endDate = new Date(end + 'T00:00:00Z');
+        const workerOwnerId = workerOwnerMap.get(workerId);
 
         if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) return 0;
 
@@ -62,7 +81,8 @@ const TransferOrderView: React.FC<TransferOrderViewProps> = ({ allLogs, workerGr
                 wd.workerId === workerId &&
                 wd.year === parseInt(year) &&
                 wd.month === parseInt(month) &&
-                wd.period === period
+                wd.period === period &&
+                wd.owner === workerOwnerId // Ensure owner matches
             );
             if (entry) {
                 totalDays += entry.days;
@@ -81,16 +101,21 @@ const TransferOrderView: React.FC<TransferOrderViewProps> = ({ allLogs, workerGr
     
         const workerIdsToReport = selectedWorkerIds.length > 0 ? selectedWorkerIds : allWorkers.map(w => w.id);
         
-        const logsInPeriod = allLogs.filter(log => 
-            log.date >= startDate && 
-            log.date <= endDate && 
-            workerIdsToReport.includes(log.workerId)
-        );
+        const logsInPeriod = allLogs.filter(log => {
+            const workerOwnerId = workerOwnerMap.get(log.workerId);
+            return (
+                log.date >= startDate && 
+                log.date <= endDate && 
+                workerIdsToReport.includes(log.workerId) &&
+                log.owner === workerOwnerId // Ensure log owner matches worker owner
+            );
+        });
         
         const allRelevantWorkerIds = new Set(logsInPeriod.map(l => l.workerId));
          workedDays.forEach(wd => {
+            const workerOwnerId = workerOwnerMap.get(wd.workerId);
             const d = new Date(wd.year, wd.month - 1, wd.period === 'first' ? 1 : 16);
-            if (d >= new Date(startDate) && d <= new Date(endDate) && workerIdsToReport.includes(wd.workerId)) {
+            if (d >= new Date(startDate) && d <= new Date(endDate) && workerIdsToReport.includes(wd.workerId) && wd.owner === workerOwnerId) {
                 allRelevantWorkerIds.add(wd.workerId);
             }
         });

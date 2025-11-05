@@ -47,16 +47,23 @@ const DailyEntryView: React.FC<DailyEntryViewProps> = ({ logs, addLog, deleteLog
     useGlow(dailyCardRef);
     useGlow(overallCardRef);
     
-    const allWorkers = useMemo(() => workerGroups.flatMap(g => g.workers), [workerGroups]);
-    const allActiveWorkers = useMemo(() => workerGroups.filter(g => !g.isArchived).flatMap(g => g.workers.filter(w => !w.isArchived)), [workerGroups]);
+    const allWorkers = useMemo(() => 
+        workerGroups.filter(g => g && Array.isArray(g.workers)).flatMap(g => g.workers)
+    , [workerGroups]);
+
+    const allActiveWorkers = useMemo(() => 
+        workerGroups
+            .filter(g => g && !g.isArchived && Array.isArray(g.workers))
+            .flatMap(g => g.workers.filter(w => w && !w.isArchived))
+    , [workerGroups]);
 
 
     const activeWorkerGroups = useMemo(() => 
         workerGroups
-            .filter(g => !g.isArchived)
+            .filter(g => g && !g.isArchived && Array.isArray(g.workers))
             .map(g => ({
                 ...g,
-                workers: g.workers.filter(w => !w.isArchived)
+                workers: g.workers.filter(w => w && !w.isArchived)
             }))
             .filter(g => g.workers.length > 0), 
     [workerGroups]);
