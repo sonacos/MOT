@@ -1,8 +1,8 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { DailyLog, Worker, WorkerGroup, WorkedDays, Task, FinalReportData, SavedFinalReport, User } from '../types';
+import { DailyLog, Worker, WorkerGroup, WorkedDays, Task, FinalReportData, SavedFinalReport, User, SavedPayroll, PayrollData, SavedTransferOrder, TransferOrderData } from '../types';
 import { getDynamicTaskByIdWithFallback } from '../constants';
 import WorkerMultiSelect from './WorkerMultiSelect';
-import { playHoverSound, playClickSound } from '../utils/audioUtils';
+import { playHoverSound } from '../utils/audioUtils';
 import { createRipple, useGlow } from '../utils/effects';
 import { printElement, exportToPDF, exportToExcel } from '../utils/exportUtils';
 import ExportMenu from './ExportMenu';
@@ -15,11 +15,18 @@ interface FinalReportViewProps {
     taskMap: Map<number, Task & { category: string }>;
     isPrinting?: boolean;
     savedReports: SavedFinalReport[];
-    onSave: (report: Partial<SavedFinalReport>) => void;
+    onSave: (report: Partial<SavedFinalReport>) => Promise<void>;
+    onSavePayroll: (report: Partial<SavedPayroll>) => Promise<void>;
+    onSaveTransferOrder: (report: Partial<SavedTransferOrder>) => Promise<void>;
     onDelete: (report: SavedFinalReport) => void;
     requestConfirmation: (title: string, message: string | React.ReactNode, onConfirm: () => void) => void;
     currentUser: User;
+    onDirectExport: (report: SavedFinalReport, format: 'print' | 'pdf' | 'excel') => void;
+    viewingReport?: SavedFinalReport | null; // For direct export rendering
 }
+
+const LAIT_TASK_ID = 37;
+const PANIER_TASK_ID = 47;
 
 const ReportContent: React.FC<{
     workers: Worker[];
@@ -67,7 +74,7 @@ const ReportContent: React.FC<{
         return entry?.days || 0;
     };
 
-    const workersWithData = workers.filter(w => dataMap.has(w.id) || getDaysWorkedForWorker(w.id) > 0);
+    const workersWithData = workers; // Use all selected workers passed in
     const totalWorkedDays = workersWithData.reduce((sum, w) => sum + getDaysWorkedForWorker(w.id), 0);
 
     return (
@@ -153,15 +160,31 @@ const ReportContent: React.FC<{
     );
 };
 
-const FinalReportView: React.FC<FinalReportViewProps> = ({ allLogs, workerGroups, workedDays, onSaveWorkedDays, taskMap, isPrinting = false, savedReports, onSave, onDelete, requestConfirmation, currentUser }) => {
+const FinalReportView: React.FC<FinalReportViewProps> = ({ allLogs, workerGroups, workedDays, onSaveWorkedDays, taskMap, isPrinting = false, savedReports, onSave, onSavePayroll, onSaveTransferOrder, onDelete, requestConfirmation, currentUser, onDirectExport, viewingReport: viewingReportForExport }) => {
     const optionsCardRef = useRef<HTMLDivElement>(null);
     useGlow(optionsCardRef);
 
-    const allActiveWorkers = useMemo(() => 
+    const allWorkersIncludingDeparted = useMemo(() => 
         workerGroups
-            .filter(g => g && !g.isArchived && Array.isArray(g.workers))
-            .flatMap(g => g.workers.filter(w => w && !w.isArchived))
+            .filter(g => g && Array.isArray(g.workers))
+            .flatMap(g => g.workers.filter(w => w))
     , [workerGroups]);
+
+    const selectableWorkerGroups = useMemo(() => 
+        workerGroups
+            .filter(g => g && Array.isArray(g.workers))
+            .map(g => ({
+                ...g,
+                workers: g.workers.filter(w => w) // Just check for existence
+            }))
+            .filter(g => g.workers.length > 0)
+            .sort((a, b) => {
+                if (a.isDepartedGroup) return 1;
+                if (b.isDepartedGroup) return -1;
+                return a.groupName.localeCompare(b.groupName);
+            }), 
+    [workerGroups]);
+
 
     // Component State
     const [mode, setMode] = useState<'list' | 'form'>('list');
@@ -169,6 +192,7 @@ const FinalReportView: React.FC<FinalReportViewProps> = ({ allLogs, workerGroups
     const [viewingReport, setViewingReport] = useState<SavedFinalReport | null>(null);
     const [draftData, setDraftData] = useState<FinalReportData | null>(null);
     const [isGenerating, setIsGenerating] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
 
     // Form State
     const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
@@ -179,6 +203,10 @@ const FinalReportView: React.FC<FinalReportViewProps> = ({ allLogs, workerGroups
     const [workersForDaysEntry, setWorkersForDaysEntry] = useState<Worker[] | null>(null);
     const [draftDays, setDraftDays] = useState<Record<number, string>>({});
     
+    const handleDaysChange = (workerId: number, value: string) => {
+        setDraftDays(prev => ({ ...prev, [workerId]: value }));
+    };
+
     const resetForm = () => {
         setSelectedYear(new Date().getFullYear());
         setSelectedMonth(new Date().getMonth() + 1);
@@ -212,7 +240,7 @@ const FinalReportView: React.FC<FinalReportViewProps> = ({ allLogs, workerGroups
     const handleDeleteReport = (report: SavedFinalReport) => {
         requestConfirmation(
             "Confirmer la Suppression",
-            `Êtes-vous sûr de vouloir supprimer ce rapport du ${new Date(report.createdAt).toLocaleString('fr-FR')}?`,
+            `Êtes-vous sûr de vouloir supprimer ce rapport du ${new Date(report.createdAt).toLocaleString('fr-FR')}? La paie et l'ordre de virement associés ne seront PAS supprimés.`,
             () => {
                 onDelete(report);
                 setViewingReport(null);
@@ -221,8 +249,16 @@ const FinalReportView: React.FC<FinalReportViewProps> = ({ allLogs, workerGroups
     };
 
     const handlePrepareDaysEntry = () => {
-        const workerIdsToList = selectedWorkerIds.length > 0 ? selectedWorkerIds : allActiveWorkers.map(w => w.id);
-        const relevantWorkers = allActiveWorkers.filter(w => workerIdsToList.includes(w.id));
+        if (selectedWorkerIds.length === 0) {
+            alert("Veuillez sélectionner au moins un ouvrier pour préparer le rapport.");
+            return;
+        }
+
+        const allRelevantWorkerIds = new Set(selectedWorkerIds);
+        
+        const relevantWorkers = allWorkersIncludingDeparted
+            .filter(w => allRelevantWorkerIds.has(w.id))
+            .sort((a, b) => a.name.localeCompare(b.name));
         
         const initialDrafts: Record<number, string> = {};
         relevantWorkers.forEach(worker => {
@@ -234,14 +270,10 @@ const FinalReportView: React.FC<FinalReportViewProps> = ({ allLogs, workerGroups
             );
             initialDrafts[worker.id] = entry != null ? String(entry.days) : '0';
         });
-
+    
         setDraftDays(initialDrafts);
         setWorkersForDaysEntry(relevantWorkers);
         setDraftData(null);
-    };
-
-    const handleDaysChange = (workerId: number, value: string) => {
-        setDraftDays(prev => ({ ...prev, [workerId]: value }));
     };
 
     const handleGenerateDraft = async () => {
@@ -281,10 +313,12 @@ const FinalReportView: React.FC<FinalReportViewProps> = ({ allLogs, workerGroups
         setIsGenerating(false);
     };
 
-    const handleSaveReport = () => {
+    const handleSave = async (andContinue: boolean) => {
         if (!draftData) return;
-        
-        const report: Partial<SavedFinalReport> = {
+        setIsSaving(true);
+    
+        // 1. Save FinalReport
+        const finalReportToSave: Partial<SavedFinalReport> = {
             id: editingReport?.id,
             owner: editingReport?.owner,
             createdAt: editingReport?.createdAt,
@@ -297,14 +331,95 @@ const FinalReportView: React.FC<FinalReportViewProps> = ({ allLogs, workerGroups
             },
             data: draftData,
         };
-        
-        onSave(report);
-        resetForm();
-        setMode('list');
+        await onSave(finalReportToSave);
+    
+        // Prepare data for chained reports
+        const startDate = new Date(Date.UTC(selectedYear, selectedMonth - 1, selectedPeriod === 'first' ? 1 : 16)).toISOString().split('T')[0];
+        const endDate = new Date(Date.UTC(selectedYear, selectedMonth - 1, selectedPeriod === 'first' ? 15 : new Date(selectedYear, selectedMonth, 0).getDate())).toISOString().split('T')[0];
+    
+        const getDaysWorkedForWorker = (workerId: number) => {
+            const entry = workedDays.find(d => d.workerId === workerId && d.year === selectedYear && d.month === selectedMonth && d.period === selectedPeriod);
+            return entry?.days || 0;
+        };
+
+        // 2. Calculate and Save Payroll
+        const payrollData: PayrollData[] = draftData.workers.map(worker => {
+            const workerLogs = draftData.logs.filter(l => l.workerId === worker.id);
+            const joursTravailles = getDaysWorkedForWorker(worker.id);
+            const tasksSummary = new Map<number, { quantity: number; price: number }>();
+            workerLogs.filter(log => log.taskId !== LAIT_TASK_ID && log.taskId !== PANIER_TASK_ID).forEach(log => {
+                const task = taskMap.get(log.taskId);
+                if (!task) return;
+                const existing = tasksSummary.get(log.taskId) || { quantity: 0, price: task.price };
+                existing.quantity += Number(log.quantity);
+                tasksSummary.set(log.taskId, existing);
+            });
+            const workerTasks: PayrollData['tasks'] = Array.from(tasksSummary.entries()).map(([taskId, summary]) => ({ taskId, ...summary, amount: summary.quantity * summary.price }));
+            const totalOperation = workerTasks.reduce((sum, task) => sum + task.amount, 0);
+            const anciennete = totalOperation * (worker.seniorityPercentage / 100);
+            const totalBrut = totalOperation + anciennete;
+            const retenu = totalBrut * 0.0674;
+            return { worker, tasks: workerTasks.sort((a,b) => a.taskId - b.taskId), totalOperation, anciennete, totalBrut, retenu, joursTravailles };
+        });
+    
+        const payrollReportToSave: Partial<SavedPayroll> = {
+            params: {
+                startDate, endDate, workerIds: selectedWorkerIds,
+                anneeScolaire: `${selectedYear}/${selectedYear + 1}`,
+                anneeRegle: `${selectedYear + 1}/${selectedYear + 2}`,
+                // FIX: Use `regionalCenter` state variable for the `centreRegional` property.
+                centreRegional: regionalCenter,
+                additionalInputs: {},
+            },
+            data: payrollData,
+        };
+        await onSavePayroll(payrollReportToSave);
+    
+        // 3. Calculate and Save Transfer Order
+        const transferOrderData: TransferOrderData[] = draftData.workers.map(worker => {
+            const joursTravailles = getDaysWorkedForWorker(worker.id);
+            const totalOperation = draftData.logs.filter(l => l.workerId === worker.id && l.taskId !== LAIT_TASK_ID && l.taskId !== PANIER_TASK_ID)
+                .reduce((sum, log) => sum + (Number(log.quantity) * (taskMap.get(log.taskId)?.price || 0)), 0);
+            const anciennete = totalOperation * (worker.seniorityPercentage / 100);
+            const totalBrut = totalOperation + anciennete;
+            const retenu = totalBrut * 0.0674;
+            const indemniteLait = joursTravailles * (taskMap.get(LAIT_TASK_ID)?.price || 0);
+            const primePanier = joursTravailles * (taskMap.get(PANIER_TASK_ID)?.price || 0);
+            const netPay = totalBrut - retenu + indemniteLait + primePanier;
+            return { worker, netPay };
+        }).filter(item => item.netPay > 0);
+    
+        const transferOrderReportToSave: Partial<SavedTransferOrder> = {
+            params: {
+                startDate, endDate, workerIds: selectedWorkerIds,
+                city: regionalCenter || 'Taza',
+                orderDate: new Date().toISOString().split('T')[0],
+            },
+            data: transferOrderData,
+        };
+        await onSaveTransferOrder(transferOrderReportToSave);
+    
+        setIsSaving(false);
+    
+        if (andContinue) {
+            setEditingReport(null);
+            setDraftData(null);
+            setSelectedWorkerIds([]);
+            setWorkersForDaysEntry(null);
+            setDraftDays({});
+            alert('Rapports sauvegardés avec succès. Vous pouvez maintenant sélectionner un autre groupe d\'ouvriers.');
+        } else {
+            resetForm();
+            setMode('list');
+        }
     };
 
-    if (isPrinting && viewingReport) {
-        return <ReportContent {...viewingReport.data} {...viewingReport.params} taskMap={taskMap} allWorkedDays={workedDays} />;
+    if (isPrinting) {
+        const reportToPrint = viewingReport || viewingReportForExport;
+        if (reportToPrint) {
+             return <ReportContent {...reportToPrint.data} {...reportToPrint.params} taskMap={taskMap} allWorkedDays={workedDays} />;
+        }
+       return null;
     }
 
     const years = Array.from({ length: 10 }, (_, i) => new Date().getFullYear() - i);
@@ -323,10 +438,12 @@ const FinalReportView: React.FC<FinalReportViewProps> = ({ allLogs, workerGroups
                     </div>
                     {savedReports.length > 0 ? (
                         <ul className="space-y-3">
-                            {savedReports.map(report => (
-                                <li key={report.id} className="p-4 border rounded-lg hover:bg-slate-50 flex justify-between items-center">
+                            {savedReports
+                                .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+                                .map(report => (
+                                <li key={report.id} className="p-4 border rounded-lg hover:bg-slate-50 flex justify-between items-center flex-wrap gap-2">
                                     <div>
-                                        <button onClick={() => setViewingReport(report)} className="font-semibold text-sonacos-green hover:underline">
+                                        <button onClick={() => setViewingReport(report)} className="font-semibold text-sonacos-green hover:underline text-left">
                                             Rapport du {report.data.startDate} au {report.data.endDate}
                                         </button>
                                         <p className="text-sm text-slate-500">
@@ -335,6 +452,11 @@ const FinalReportView: React.FC<FinalReportViewProps> = ({ allLogs, workerGroups
                                         </p>
                                     </div>
                                     <div className="flex items-center gap-2">
+                                        <ExportMenu
+                                            onPrint={() => onDirectExport(report, 'print')}
+                                            onExportPDF={() => onDirectExport(report, 'pdf')}
+                                            onExportExcel={() => onDirectExport(report, 'excel')}
+                                        />
                                         <button onClick={() => handleEditReport(report)} className="p-2 text-slate-500 hover:text-blue-600 rounded-full hover:bg-blue-100"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" /></svg></button>
                                         <button onClick={() => handleDeleteReport(report)} className="p-2 text-slate-500 hover:text-red-600 rounded-full hover:bg-red-100"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" /></svg></button>
                                     </div>
@@ -348,13 +470,12 @@ const FinalReportView: React.FC<FinalReportViewProps> = ({ allLogs, workerGroups
             {mode === 'form' && (
                 <div ref={optionsCardRef} className="bg-white p-6 rounded-lg shadow-lg border border-slate-200 interactive-glow">
                     <h2 className="text-2xl font-bold text-slate-800 mb-6 border-b pb-4">{editingReport ? 'Modifier le Rapport' : 'Générer un Nouveau Rapport'}</h2>
-                    {/* Form content from original component */}
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
                         <div className="md:col-span-1"><label className="block text-sm font-medium text-slate-700 mb-1.5">Année</label><select value={selectedYear} onChange={e => setSelectedYear(Number(e.target.value))} className="w-full p-2 border border-slate-300 rounded-md shadow-sm">{years.map(y => <option key={y} value={y}>{y}</option>)}</select></div>
                         <div className="md:col-span-1"><label className="block text-sm font-medium text-slate-700 mb-1.5">Mois</label><select value={selectedMonth} onChange={e => setSelectedMonth(Number(e.target.value))} className="w-full p-2 border border-slate-300 rounded-md shadow-sm">{months.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}</select></div>
                         <div className="md:col-span-1"><label className="block text-sm font-medium text-slate-700 mb-1.5">Période</label><select value={selectedPeriod} onChange={e => setSelectedPeriod(e.target.value as 'first' | 'second')} className="w-full p-2 border border-slate-300 rounded-md shadow-sm"><option value="first">1 - 15</option><option value="second">16 - Fin du mois</option></select></div>
                         <div className="md:col-span-1"><label className="block text-sm font-medium text-slate-700 mb-1.5">Centre Régional</label><input type="text" value={regionalCenter} onChange={e => setRegionalCenter(e.target.value)} className="w-full p-2 border border-slate-300 rounded-md shadow-sm" placeholder="Ex: Taza"/></div>
-                        <div className="md:col-span-4"><label className="block text-sm font-medium text-slate-700 mb-1.5">Filtrer par Ouvrier (Optionnel)</label><WorkerMultiSelect workerGroups={workerGroups} selectedWorkerIds={selectedWorkerIds} onChange={setSelectedWorkerIds} /></div>
+                        <div className="md:col-span-4"><label className="block text-sm font-medium text-slate-700 mb-1.5">Ouvrier(s) à inclure</label><WorkerMultiSelect workerGroups={selectableWorkerGroups} selectedWorkerIds={selectedWorkerIds} onChange={setSelectedWorkerIds} /></div>
                     </div>
                     <div className="flex justify-between items-center mt-6">
                         <button onClick={() => { setMode('list'); resetForm(); }} className="px-4 py-2 bg-slate-200 text-slate-800 font-semibold rounded-lg hover:bg-slate-300">Annuler</button>
@@ -383,12 +504,17 @@ const FinalReportView: React.FC<FinalReportViewProps> = ({ allLogs, workerGroups
                  <div className="bg-slate-200 p-8 rounded-lg">
                      <div className="flex justify-between items-center mb-4">
                         <h2 className="text-xl font-bold">{viewingReport ? 'Aperçu du Rapport Sauvegardé' : 'Brouillon du Rapport'}</h2>
-                        <div>
+                        <div className="flex items-center gap-3">
                             {viewingReport && <ExportMenu onPrint={() => printElement('final-report-content', 'Rapport')} onExportPDF={() => exportToPDF('final-report-content', 'Rapport')} onExportExcel={() => exportToExcel('final-report-content', 'Rapport')} />}
                             {draftData && !viewingReport && (
-                                <button onClick={handleSaveReport} className="px-4 py-2 bg-sonacos-green text-white font-semibold rounded-lg hover:bg-green-800">
-                                    Confirmer et Sauvegarder le Rapport
-                                </button>
+                                <div className="flex items-center gap-3">
+                                    <button onClick={() => handleSave(false)} disabled={isSaving} className="px-4 py-2 bg-slate-500 text-white font-semibold rounded-lg hover:bg-slate-600 disabled:bg-slate-400">
+                                        {isSaving ? 'Sauvegarde...' : 'Sauvegarder et Quitter'}
+                                    </button>
+                                    <button onClick={() => handleSave(true)} disabled={isSaving} className="px-4 py-2 bg-sonacos-green text-white font-semibold rounded-lg hover:bg-green-800 disabled:bg-slate-400">
+                                        {isSaving ? 'Sauvegarde...' : 'Sauvegarder et Créer un autre'}
+                                    </button>
+                                </div>
                             )}
                         </div>
                      </div>

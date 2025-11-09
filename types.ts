@@ -1,3 +1,5 @@
+
+
 export interface Task {
   id: number;
   description: string;
@@ -100,6 +102,9 @@ export interface AnnualSummaryData {
     joursTravailles: number;
     indemnites: number;
     netPay: number;
+    // FIX: Make groupName and isHNS required to match component logic and resolve type predicate error.
+    groupName: string;
+    isHNS: boolean;
 }
 
 
@@ -125,12 +130,13 @@ export interface SavedFinalReport extends SavedReport {
 
 export interface SavedPayroll extends SavedReport {
     params: {
+        // FIX: Replaced sourceReportIds with properties that are actually used in the component logic.
         startDate: string;
         endDate: string;
+        workerIds: number[];
         anneeScolaire: string;
         anneeRegle: string;
         centreRegional: string;
-        workerIds: number[];
         additionalInputs: Record<number, { avance: string }>;
     };
     data: PayrollData[];
@@ -138,17 +144,19 @@ export interface SavedPayroll extends SavedReport {
 
 export interface SavedTransferOrder extends SavedReport {
     params: {
-        city: string;
-        orderDate: string;
+        // FIX: Replaced sourceReportIds with properties that are actually used in the component logic.
         startDate: string;
         endDate: string;
         workerIds: number[];
+        city: string;
+        orderDate: string;
     };
     data: TransferOrderData[];
 }
 
 export interface SavedAnnualSummary extends SavedReport {
     params: {
+        sourceReportIds: string[];
         year: number;
     };
     data: AnnualSummaryData[];

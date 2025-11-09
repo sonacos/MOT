@@ -1,6 +1,7 @@
 
 import React, { useState, useCallback, useEffect } from 'react';
-import { DailyLog, WorkerGroup, Worker, WorkedDays, User, UserRole, Task, TaskGroup, SavedFinalReport, SavedPayroll, SavedTransferOrder, SavedAnnualSummary } from './types';
+import ReactDOM from 'react-dom';
+import { DailyLog, WorkerGroup, Worker, WorkedDays, User, UserRole, Task, TaskGroup, SavedFinalReport, SavedPayroll, SavedTransferOrder, SavedAnnualSummary, PayrollData, TransferOrderData } from './types';
 import Sidebar from './components/Sidebar';
 import TopBar from './components/TopBar';
 import DailyEntryView from './components/DailyEntryView';
@@ -17,6 +18,7 @@ import { unlockAudio } from './utils/audioUtils';
 import { auth, db } from './firebaseConfig';
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import FinalReportView from './components/FinalReportView';
+import { printElement, exportToPDF, exportToExcel } from './utils/exportUtils';
 import {
     collection,
     doc,
@@ -36,6 +38,10 @@ import {
 import { INITIAL_TASK_GROUPS } from './constants';
 
 const DEPARTED_GROUP_ID = 9999;
+const reportCollections = ['finalReports', 'payrolls', 'transferOrders', 'annualSummaries'];
+const LAIT_TASK_ID = 37;
+const PANIER_TASK_ID = 47;
+
 
 const createTaskMap = (taskGroups: TaskGroup[]): Map<number, Task & { category: string }> => {
     const taskMap = new Map<number, Task & { category: string }>();
@@ -73,6 +79,10 @@ const App: React.FC = () => {
     const [currentUser, setCurrentUser] = useState<User | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [authChecked, setAuthChecked] = useState(false);
+
+    // Direct Export State
+    const [exportRequest, setExportRequest] = useState<{report: any; type: string; format: 'print' | 'pdf' | 'excel'} | null>(null);
+
     
     // Confirmation Modal State
     const [confirmationState, setConfirmationState] = useState<{
@@ -86,9 +96,6 @@ const App: React.FC = () => {
         message: '',
         onConfirm: null,
     });
-
-    // FIX: Moved reportCollections definition to component scope to be accessible by multiple functions.
-    const reportCollections = ['finalReports', 'payrolls', 'transferOrders', 'annualSummaries'];
 
     const requestConfirmation = (title: string, message: string | React.ReactNode, onConfirm: () => void) => {
         setConfirmationState({ isOpen: true, title, message, onConfirm });
@@ -151,7 +158,13 @@ const App: React.FC = () => {
                 setLogs(logsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as DailyLog)));
                 
                 const groups = groupsSnapshot.docs.map(doc => {
-                    const group = { id: Number(doc.id), ...doc.data() } as WorkerGroup;
+                    const groupData = doc.data();
+                    const ownerId = doc.ref.parent.parent?.id;
+                    const group = { 
+                        id: Number(doc.id), 
+                        ...groupData,
+                        owner: groupData.owner || ownerId, // Fallback to ownerId from path
+                    } as WorkerGroup; 
                     const ownerEmail = userMap.get(group.owner || '');
                     return { ...group, ownerEmail: ownerEmail || 'Inconnu' };
                 });
@@ -194,7 +207,7 @@ const App: React.FC = () => {
         } finally {
             setIsLoading(false);
         }
-    }, [reportCollections]);
+    }, []);
 
     // --- Auth Listener ---
     useEffect(() => {
@@ -310,12 +323,33 @@ const App: React.FC = () => {
 
         if (isNew) {
             const { id, ...payload } = data;
-            await addDoc(collection(db, 'users', ownerId, collectionName), payload);
+            const docRef = await addDoc(collection(db, 'users', ownerId, collectionName), payload);
+            if (currentUser.role !== 'superadmin') { // Refresh local state for current user
+                 // FIX: Use `as unknown as <Type>` for type assertions to resolve conversion errors.
+                 // The generic type T doesn't guarantee the presence of `params` and `data` properties,
+                 // but the application logic ensures they exist on the `reportToSave` object.
+                 if (collectionName === 'finalReports') setSavedFinalReports(prev => [...prev, { ...data, id: docRef.id } as unknown as SavedFinalReport]);
+                 if (collectionName === 'payrolls') setSavedPayrolls(prev => [...prev, { ...data, id: docRef.id } as unknown as SavedPayroll]);
+                 if (collectionName === 'transferOrders') setSavedTransferOrders(prev => [...prev, { ...data, id: docRef.id } as unknown as SavedTransferOrder]);
+                 if (collectionName === 'annualSummaries') setSavedAnnualSummaries(prev => [...prev, { ...data, id: docRef.id } as unknown as SavedAnnualSummary]);
+            }
         } else {
             const docRef = doc(db, 'users', ownerId, collectionName, reportToSave.id!);
             await setDoc(docRef, data);
+             if (currentUser.role !== 'superadmin') { // Refresh local state for current user
+                 // FIX: Use `as unknown as <Type>` for type assertions to resolve conversion errors.
+                 // The generic type T doesn't guarantee the presence of `params` and `data` properties,
+                 // but the application logic ensures they exist on the `reportToSave` object.
+                 if (collectionName === 'finalReports') setSavedFinalReports(prev => prev.map(r => r.id === data.id ? data as unknown as SavedFinalReport : r));
+                 if (collectionName === 'payrolls') setSavedPayrolls(prev => prev.map(r => r.id === data.id ? data as unknown as SavedPayroll : r));
+                 if (collectionName === 'transferOrders') setSavedTransferOrders(prev => prev.map(r => r.id === data.id ? data as unknown as SavedTransferOrder : r));
+                 if (collectionName === 'annualSummaries') setSavedAnnualSummaries(prev => prev.map(r => r.id === data.id ? data as unknown as SavedAnnualSummary : r));
+            }
         }
-        await fetchData(currentUser);
+        // Always do a full refresh for superadmin or if it's simpler
+        if (currentUser.role === 'superadmin') {
+            await fetchData(currentUser);
+        }
     };
 
     const createDeleteHandler = <T extends { id: string; owner: string }>(collectionName: string) => async (reportToDelete: T) => {
@@ -334,6 +368,87 @@ const App: React.FC = () => {
     const handleDeleteTransferOrder = createDeleteHandler<SavedTransferOrder>('transferOrders');
     const handleSaveAnnualSummary = createSaveHandler<Partial<SavedAnnualSummary>>('annualSummaries');
     const handleDeleteAnnualSummary = createDeleteHandler<SavedAnnualSummary>('annualSummaries');
+
+    // --- Retroactive Generation ---
+    const handleRetroactiveGeneration = async () => {
+        if (!currentUser || taskMap.size === 0) return;
+
+        requestConfirmation(
+            "Génération Rétroactive",
+            "Ceci va analyser tous les rapports bi-mensuels existants et créer les décomptes de paie et ordres de virement manquants. Voulez-vous continuer ?",
+            async () => {
+                const existingPayrollKeys = new Set(savedPayrolls.map(p => `${p.params.startDate}-${p.params.endDate}-${JSON.stringify(p.params.workerIds.sort())}-${p.owner}`));
+                let generatedCount = 0;
+
+                for (const finalReport of savedFinalReports) {
+                    const key = `${finalReport.data.startDate.split('/').reverse().join('-')}-${finalReport.data.endDate.split('/').reverse().join('-')}-${JSON.stringify(finalReport.params.workerIds.sort())}-${finalReport.owner}`;
+
+                    if (!existingPayrollKeys.has(key)) {
+                        const { year, month, period, regionalCenter, workerIds } = finalReport.params;
+                        const { workers: reportWorkers, logs: reportLogs } = finalReport.data;
+                        const startDate = new Date(Date.UTC(year, month - 1, period === 'first' ? 1 : 16)).toISOString().split('T')[0];
+                        const endDate = new Date(Date.UTC(year, month - 1, period === 'first' ? 15 : new Date(year, month, 0).getDate())).toISOString().split('T')[0];
+
+                        const getDaysWorkedForWorker = (workerId: number) => {
+                            const entry = workedDays.find(d => d.workerId === workerId && d.year === year && d.month === month && d.period === period);
+                            return entry?.days || 0;
+                        };
+
+                        // Calculate Payroll
+                        const payrollData: PayrollData[] = reportWorkers.map(worker => {
+                            const workerLogs = reportLogs.filter(l => l.workerId === worker.id);
+                            const joursTravailles = getDaysWorkedForWorker(worker.id);
+                            const tasksSummary = new Map<number, { quantity: number; price: number }>();
+                            workerLogs.filter(log => log.taskId !== LAIT_TASK_ID && log.taskId !== PANIER_TASK_ID).forEach(log => {
+                                const task = taskMap.get(log.taskId);
+                                if (!task) return;
+                                const existing = tasksSummary.get(log.taskId) || { quantity: 0, price: task.price };
+                                existing.quantity += Number(log.quantity);
+                                tasksSummary.set(log.taskId, existing);
+                            });
+                            const workerTasks: PayrollData['tasks'] = Array.from(tasksSummary.entries()).map(([taskId, summary]) => ({ taskId, ...summary, amount: summary.quantity * summary.price }));
+                            const totalOperation = workerTasks.reduce((sum, task) => sum + task.amount, 0);
+                            const anciennete = totalOperation * (worker.seniorityPercentage / 100);
+                            const totalBrut = totalOperation + anciennete;
+                            const retenu = totalBrut * 0.0674;
+                            return { worker, tasks: workerTasks.sort((a,b) => a.taskId - b.taskId), totalOperation, anciennete, totalBrut, retenu, joursTravailles };
+                        });
+                        const payrollToSave: Omit<SavedPayroll, 'id'> = {
+                           owner: finalReport.owner, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+                           params: { startDate, endDate, workerIds, anneeScolaire: `${year}/${year + 1}`, anneeRegle: `${year + 1}/${year + 2}`, centreRegional: regionalCenter, additionalInputs: {} },
+                           data: payrollData,
+                        };
+                        await handleSavePayroll(payrollToSave);
+
+                        // Calculate Transfer Order
+                        const transferOrderData: TransferOrderData[] = reportWorkers.map(worker => {
+                            const joursTravailles = getDaysWorkedForWorker(worker.id);
+                            const totalOperation = reportLogs.filter(l => l.workerId === worker.id && l.taskId !== LAIT_TASK_ID && l.taskId !== PANIER_TASK_ID)
+                                .reduce((sum, log) => sum + (Number(log.quantity) * (taskMap.get(log.taskId)?.price || 0)), 0);
+                            const anciennete = totalOperation * (worker.seniorityPercentage / 100);
+                            const totalBrut = totalOperation + anciennete;
+                            const retenu = totalBrut * 0.0674;
+                            const indemniteLait = joursTravailles * (taskMap.get(LAIT_TASK_ID)?.price || 0);
+                            const primePanier = joursTravailles * (taskMap.get(PANIER_TASK_ID)?.price || 0);
+                            const netPay = totalBrut - retenu + indemniteLait + primePanier;
+                            return { worker, netPay };
+                        }).filter(item => item.netPay > 0);
+                         const transferOrderToSave: Omit<SavedTransferOrder, 'id'> = {
+                           owner: finalReport.owner, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+                           params: { startDate, endDate, workerIds, city: regionalCenter || 'Taza', orderDate: new Date().toISOString().split('T')[0] },
+                           data: transferOrderData,
+                        };
+                        await handleSaveTransferOrder(transferOrderToSave);
+                        generatedCount++;
+                    }
+                }
+                alert(`${generatedCount} ensemble(s) de rapport(s) manquant(s) ont été générés avec succès.`);
+                if (generatedCount > 0) {
+                    await fetchData(currentUser);
+                }
+            }
+        );
+    };
 
 
     // --- Data Writing Functions with Scoping ---
@@ -485,11 +600,51 @@ const App: React.FC = () => {
             alert("Action non autorisée.");
             return;
         }
+
+        const groupToDelete = workerGroups.find(g => g.id === groupId && g.owner === ownerId);
+        if (!groupToDelete) {
+            console.error(`Group with ID ${groupId} for owner ${ownerId} not found.`);
+            alert("Groupe non trouvé.");
+            return;
+        }
+
+        const workersToMove = groupToDelete.workers || [];
+        if (workersToMove.length === 0) {
+            // If no workers, just delete the group
+            try {
+                await deleteDoc(doc(db, 'users', ownerId, 'workerGroups', String(groupId)));
+                await fetchData(currentUser);
+                return;
+            } catch (error) {
+                console.error("Error deleting empty group permanently:", error);
+                alert("Une erreur est survenue lors de la suppression du groupe.");
+                return;
+            }
+        }
+        
+        const departedGroup = workerGroups.find(g => g.id === DEPARTED_GROUP_ID && g.owner === ownerId);
+        if (!departedGroup) {
+            alert("Le groupe 'Personnel Parti' est introuvable pour cet utilisateur. Impossible de déplacer les ouvriers. Suppression annulée.");
+            return;
+        }
+
         try {
-            await deleteDoc(doc(db, 'users', ownerId, 'workerGroups', String(groupId)));
+            const batch = writeBatch(db);
+            const departedGroupRef = doc(db, 'users', ownerId, 'workerGroups', String(DEPARTED_GROUP_ID));
+            const updatedWorkersForDepartedGroup = [
+                ...departedGroup.workers, 
+                ...workersToMove.map(w => ({ ...w, isArchived: true }))
+            ].sort((a,b) => a.name.localeCompare(b.name));
+            
+            batch.update(departedGroupRef, { workers: updatedWorkersForDepartedGroup });
+
+            const groupToDeleteRef = doc(db, 'users', ownerId, 'workerGroups', String(groupId));
+            batch.delete(groupToDeleteRef);
+
+            await batch.commit();
             await fetchData(currentUser);
         } catch (error) {
-            console.error("Error deleting group permanently:", error);
+            console.error("Error deleting group permanently and moving workers:", error);
             alert("Une erreur est survenue lors de la suppression du groupe.");
         }
     };
@@ -679,6 +834,43 @@ const App: React.FC = () => {
         if (currentUser) await fetchData(currentUser);
     };
 
+    // --- Direct Export Logic ---
+    const handleDirectExport = (report: any, type: string, format: 'print' | 'pdf' | 'excel') => {
+        setExportRequest({ report, type, format });
+    };
+
+    useEffect(() => {
+        if (exportRequest) {
+            setTimeout(() => {
+                const { report, format, type } = exportRequest;
+                const elementId = 'direct-export-content';
+                const fileName = `${type}_${report.id}`;
+                let orientation: 'portrait' | 'landscape' = 'landscape';
+                if(type === 'transferOrder') orientation = 'portrait';
+                
+                switch (format) {
+                    case 'print': printElement(elementId, type); break;
+                    case 'pdf': exportToPDF(elementId, fileName, orientation); break;
+                    case 'excel': exportToExcel(elementId, fileName); break;
+                }
+                setExportRequest(null);
+            }, 100);
+        }
+    }, [exportRequest]);
+
+    const renderExportComponent = () => {
+        if (!exportRequest) return null;
+        const { report, type } = exportRequest;
+        
+        switch (type) {
+            case 'finalReport': return <FinalReportView isPrinting savedReports={[]} {...({} as any)} {...report.props} workerGroups={workerGroups} workedDays={workedDays} taskMap={taskMap} currentUser={currentUser} viewingReport={report} />;
+            case 'payroll': return <PayrollView isPrinting savedReports={[]} {...({} as any)} {...report.props} workerGroups={workerGroups} taskMap={taskMap} currentUser={currentUser} viewingReport={report} onSave={handleSavePayroll} />;
+            case 'transferOrder': return <TransferOrderView isPrinting savedReports={[]} {...({} as any)} {...report.props} workerGroups={workerGroups} taskMap={taskMap} currentUser={currentUser} viewingReport={report} onSave={handleSaveTransferOrder}/>;
+            case 'annualSummary': return <AnnualSummaryView isPrinting savedReports={[]} {...({} as any)} {...report.props} savedFinalReports={savedFinalReports} workerGroups={workerGroups} workedDays={workedDays} taskMap={taskMap} currentUser={currentUser} viewingReport={report} />;
+            default: return null;
+        }
+    };
+    
     const viewTitles: Record<View, string> = {
         entry: 'Saisie Journalière des Opérations',
         finalReport: 'État Bi-mensuel Final',
@@ -740,11 +932,46 @@ const App: React.FC = () => {
                     <div className={`transition-opacity duration-150 ${isAnimatingOut ? 'opacity-0' : 'opacity-100'}`}>
                         <div className="print:hidden">
                             {currentView === 'entry' && <DailyEntryView logs={userLogs} addLog={addLog} deleteLog={deleteLog} finalizedDates={finalizedDates} onToggleFinalize={toggleFinalizeDate} workerGroups={userWorkerGroups} entryDate={entryDate} setEntryDate={setEntryDate} currentUser={currentUser} deleteLogsByDate={deleteLogsByDate} requestConfirmation={requestConfirmation} taskGroups={taskGroups} taskMap={taskMap} />}
-                            {currentView === 'finalReport' && <FinalReportView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} onSaveWorkedDays={saveWorkedDays} taskMap={taskMap} savedReports={userSavedFinalReports} onSave={handleSaveFinalReport} onDelete={handleDeleteFinalReport} requestConfirmation={requestConfirmation} currentUser={currentUser} />}
-                            {currentView === 'payroll' && <PayrollView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} taskMap={taskMap} savedReports={userSavedPayrolls} onSave={handleSavePayroll} onDelete={handleDeletePayroll} requestConfirmation={requestConfirmation} currentUser={currentUser} />}
-                            {currentView === 'transferOrder' && <TransferOrderView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} taskMap={taskMap} savedReports={userSavedTransferOrders} onSave={handleSaveTransferOrder} onDelete={handleDeleteTransferOrder} requestConfirmation={requestConfirmation} currentUser={currentUser} />}
+                            {currentView === 'finalReport' && <FinalReportView 
+                                allLogs={logs} 
+                                workerGroups={workerGroups} 
+                                workedDays={workedDays} 
+                                onSaveWorkedDays={saveWorkedDays} 
+                                taskMap={taskMap} 
+                                savedReports={userSavedFinalReports} 
+                                onSave={handleSaveFinalReport} 
+                                onSavePayroll={handleSavePayroll}
+                                onSaveTransferOrder={handleSaveTransferOrder}
+                                onDelete={handleDeleteFinalReport} 
+                                requestConfirmation={requestConfirmation} 
+                                currentUser={currentUser} 
+                                onDirectExport={(report, format) => handleDirectExport(report, 'finalReport', format)} 
+                            />}
+                            {currentView === 'payroll' && <PayrollView 
+                                workerGroups={workerGroups} 
+                                taskMap={taskMap} 
+                                savedReports={userSavedPayrolls} 
+                                onSave={handleSavePayroll}
+                                onDelete={handleDeletePayroll} 
+                                requestConfirmation={requestConfirmation} 
+                                currentUser={currentUser} 
+                                onDirectExport={(report, format) => handleDirectExport(report, 'payroll', format)}
+                                viewingReport={exportRequest?.type === 'payroll' ? exportRequest.report : null}
+                                onRetroactiveGenerate={handleRetroactiveGeneration}
+                            />}
+                            {currentView === 'transferOrder' && <TransferOrderView 
+                                workerGroups={workerGroups} 
+                                taskMap={taskMap} 
+                                savedReports={userSavedTransferOrders} 
+                                onSave={handleSaveTransferOrder}
+                                onDelete={handleDeleteTransferOrder} 
+                                requestConfirmation={requestConfirmation} 
+                                currentUser={currentUser} 
+                                onDirectExport={(report, format) => handleDirectExport(report, 'transferOrder', format)}
+                                viewingReport={exportRequest?.type === 'transferOrder' ? exportRequest.report : null}
+                            />}
                             {currentView === 'season' && <SeasonView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} taskMap={taskMap} />}
-                            {currentView === 'annualSummary' && <AnnualSummaryView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} taskMap={taskMap} savedReports={userSavedAnnualSummaries} onSave={handleSaveAnnualSummary} onDelete={handleDeleteAnnualSummary} requestConfirmation={requestConfirmation} currentUser={currentUser} />}
+                            {currentView === 'annualSummary' && <AnnualSummaryView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} taskMap={taskMap} savedReports={userSavedAnnualSummaries} onSave={handleSaveAnnualSummary} onDelete={handleDeleteAnnualSummary} requestConfirmation={requestConfirmation} currentUser={currentUser} savedFinalReports={userSavedFinalReports} onDirectExport={(report, format) => handleDirectExport(report, 'annualSummary', format)} />}
                             {currentView === 'management' && (
                                 <ManagementView 
                                     workerGroups={userWorkerGroups} onAddGroup={addGroup} onEditGroup={editGroup} onArchiveGroup={archiveGroup}
@@ -775,11 +1002,11 @@ const App: React.FC = () => {
                             )}
                         </div>
                         <div className="hidden print:block">
-                            {currentView === 'finalReport' && <FinalReportView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} onSaveWorkedDays={saveWorkedDays} isPrinting taskMap={taskMap} savedReports={userSavedFinalReports} onSave={handleSaveFinalReport} onDelete={handleDeleteFinalReport} requestConfirmation={requestConfirmation} currentUser={currentUser} />}
-                            {currentView === 'payroll' && <PayrollView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} isPrinting taskMap={taskMap} savedReports={userSavedPayrolls} onSave={handleSavePayroll} onDelete={handleDeletePayroll} requestConfirmation={requestConfirmation} currentUser={currentUser} />}
-                            {currentView === 'transferOrder' && <TransferOrderView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} isPrinting taskMap={taskMap} savedReports={userSavedTransferOrders} onSave={handleSaveTransferOrder} onDelete={handleDeleteTransferOrder} requestConfirmation={requestConfirmation} currentUser={currentUser} />}
+                            {currentView === 'finalReport' && <FinalReportView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} onSaveWorkedDays={saveWorkedDays} isPrinting taskMap={taskMap} savedReports={userSavedFinalReports} onSave={handleSaveFinalReport} onDelete={handleDeleteFinalReport} requestConfirmation={requestConfirmation} currentUser={currentUser} onDirectExport={(report, format) => handleDirectExport(report, 'finalReport', format)} onSavePayroll={handleSavePayroll} onSaveTransferOrder={handleSaveTransferOrder} />}
+                            {currentView === 'payroll' && <PayrollView workerGroups={workerGroups} isPrinting taskMap={taskMap} savedReports={userSavedPayrolls} onSave={handleSavePayroll} onDelete={handleDeletePayroll} requestConfirmation={requestConfirmation} currentUser={currentUser} onDirectExport={(report, format) => handleDirectExport(report, 'payroll', format)} onRetroactiveGenerate={handleRetroactiveGeneration} />}
+                            {currentView === 'transferOrder' && <TransferOrderView workerGroups={workerGroups} isPrinting taskMap={taskMap} savedReports={userSavedTransferOrders} onSave={handleSaveTransferOrder} onDelete={handleDeleteTransferOrder} requestConfirmation={requestConfirmation} currentUser={currentUser} onDirectExport={(report, format) => handleDirectExport(report, 'transferOrder', format)} />}
                             {currentView === 'season' && <SeasonView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} isPrinting taskMap={taskMap} />}
-                            {currentView === 'annualSummary' && <AnnualSummaryView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} isPrinting taskMap={taskMap} savedReports={userSavedAnnualSummaries} onSave={handleSaveAnnualSummary} onDelete={handleDeleteAnnualSummary} requestConfirmation={requestConfirmation} currentUser={currentUser} />}
+                            {currentView === 'annualSummary' && <AnnualSummaryView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} isPrinting taskMap={taskMap} savedReports={userSavedAnnualSummaries} onSave={handleSaveAnnualSummary} onDelete={handleDeleteAnnualSummary} requestConfirmation={requestConfirmation} currentUser={currentUser} savedFinalReports={userSavedFinalReports} onDirectExport={(report, format) => handleDirectExport(report, 'annualSummary', format)} />}
                         </div>
                     </div>
                 </main>
@@ -791,6 +1018,13 @@ const App: React.FC = () => {
                 title={confirmationState.title}
                 message={confirmationState.message}
             />
+            {exportRequest && document.getElementById('direct-export-container') && ReactDOM.createPortal(
+                <div id="direct-export-content" className="bg-white">
+                    {renderExportComponent()}
+                </div>,
+                document.getElementById('direct-export-container')!
+            )}
+            <div id="direct-export-container" className="absolute -top-[9999px] -left-[9999px] print:hidden"></div>
         </div>
     );
 };
