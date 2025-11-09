@@ -52,7 +52,7 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({ logs, finalizedDates, c
         });
         
         // Sort dates within each group
-        groups.forEach((dates) => dates.sort((a, b) => b.localeCompare(a)));
+        groups.forEach((dates: string[]) => dates.sort((a: string, b: string) => b.localeCompare(a)));
 
         // Sort the period keys themselves in reverse chronological order
         const sortedKeys = Array.from(groups.keys()).sort((a: string, b: string) => {
