@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { DailyLog, WorkerGroup, Worker, WorkedDays, User, UserRole } from './types';
+import { DailyLog, WorkerGroup, Worker, WorkedDays, User, UserRole, Task, TaskGroup } from './types';
 import Sidebar from './components/Sidebar';
 import TopBar from './components/TopBar';
 import DailyEntryView from './components/DailyEntryView';
@@ -11,6 +11,7 @@ import SeasonView from './components/SeasonView';
 import AnnualSummaryView from './components/AnnualSummaryView';
 import LoginView from './components/LoginView';
 import ConfirmationModal from './components/ConfirmationModal';
+import TariffManagementView from './components/TariffManagementView';
 import { unlockAudio } from './utils/audioUtils';
 import { auth, db } from './firebaseConfig';
 import { onAuthStateChanged, signOut } from "firebase/auth";
@@ -30,11 +31,22 @@ import {
     collectionGroup,
     where,
 } from 'firebase/firestore';
+import { INITIAL_TASK_GROUPS } from './constants';
 
 const DEPARTED_GROUP_ID = 9999;
 
+const createTaskMap = (taskGroups: TaskGroup[]): Map<number, Task & { category: string }> => {
+    const taskMap = new Map<number, Task & { category: string }>();
+    taskGroups.flatMap(group =>
+        group.tasks.map(task => ({ ...task, category: group.category }))
+    ).forEach(task => {
+        taskMap.set(task.id, task);
+    });
+    return taskMap;
+};
+
 const App: React.FC = () => {
-    type View = 'entry' | 'management' | 'payroll' | 'transferOrder' | 'userManagement' | 'season' | 'finalReport' | 'annualSummary';
+    type View = 'entry' | 'management' | 'payroll' | 'transferOrder' | 'userManagement' | 'season' | 'finalReport' | 'annualSummary' | 'tariffManagement';
     const [currentView, setCurrentView] = useState<View>('entry');
     const [isAnimatingOut, setIsAnimatingOut] = useState(false);
     const [entryDate, setEntryDate] = useState(new Date().toISOString().split('T')[0]);
@@ -46,6 +58,8 @@ const App: React.FC = () => {
     const [finalizedDates, setFinalizedDates] = useState<string[]>([]);
     const [workedDays, setWorkedDays] = useState<WorkedDays[]>([]);
     const [users, setUsers] = useState<User[]>([]);
+    const [taskGroups, setTaskGroups] = useState<TaskGroup[]>([]);
+    const [taskMap, setTaskMap] = useState<Map<number, Task & { category: string }>>(new Map());
     
     // Auth and loading states
     const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -84,6 +98,24 @@ const App: React.FC = () => {
     const fetchData = useCallback(async (user: User) => {
         setIsLoading(true);
         try {
+            // Fetch tariffs first as they are global and needed by other components
+            const tariffsSnapshot = await getDocs(collection(db, 'tariffs'));
+            if (tariffsSnapshot.empty) {
+                // First-time setup: Migrate from constants
+                console.log("Tariffs collection is empty. Populating from initial data...");
+                const batch = writeBatch(db);
+                INITIAL_TASK_GROUPS.forEach(group => {
+                    const docId = group.category.replace(/[^a-zA-Z0-9]/g, '_');
+                    const tariffRef = doc(db, 'tariffs', docId);
+                    batch.set(tariffRef, group);
+                });
+                await batch.commit();
+                setTaskGroups(INITIAL_TASK_GROUPS);
+            } else {
+                const fetchedTaskGroups = tariffsSnapshot.docs.map(doc => doc.data() as TaskGroup).sort((a,b) => INITIAL_TASK_GROUPS.findIndex(g => g.category === a.category) - INITIAL_TASK_GROUPS.findIndex(g => g.category === b.category));
+                setTaskGroups(fetchedTaskGroups);
+            }
+
             if (user.role === 'superadmin') {
                 // Superadmin fetches data from all users using collectionGroup
                 const [logsSnapshot, groupsSnapshot, finalizedSnapshot, workedDaysSnapshot, usersSnapshot] = await Promise.all([
@@ -207,6 +239,12 @@ const App: React.FC = () => {
         return () => unsubscribe();
     }, [fetchData]);
 
+    useEffect(() => {
+        if (taskGroups.length > 0) {
+            setTaskMap(createTaskMap(taskGroups));
+        }
+    }, [taskGroups]);
+    
     // Ensure the departed group always exists for the current user (self-healing for existing users)
     useEffect(() => {
         if (!isLoading && currentUser && !workerGroups.some(g => g.id === DEPARTED_GROUP_ID && g.owner === currentUser.uid)) {
@@ -547,6 +585,38 @@ const App: React.FC = () => {
         if (currentUser) await fetchData(currentUser);
     };
 
+    const handleUpdateTask = async (categoryName: string, taskId: number, newPrice: number) => {
+        if (currentUser?.role !== 'superadmin') return;
+        const docId = categoryName.replace(/[^a-zA-Z0-9]/g, '_');
+        const groupDocRef = doc(db, 'tariffs', docId);
+        
+        const groupToUpdate = taskGroups.find(g => g.category === categoryName);
+        if (!groupToUpdate) return;
+    
+        const updatedTasks = groupToUpdate.tasks.map(task => 
+            task.id === taskId ? { ...task, price: newPrice } : task
+        );
+    
+        await updateDoc(groupDocRef, { tasks: updatedTasks });
+        if (currentUser) await fetchData(currentUser);
+    };
+    
+    const handleAddTask = async (categoryName: string, taskData: Omit<Task, 'id'>) => {
+        if (currentUser?.role !== 'superadmin') return;
+        const docId = categoryName.replace(/[^a-zA-Z0-9]/g, '_');
+        const groupDocRef = doc(db, 'tariffs', docId);
+    
+        const groupToUpdate = taskGroups.find(g => g.category === categoryName);
+        if (!groupToUpdate) return;
+        
+        const newTask = { ...taskData, id: Date.now() };
+    
+        const updatedTasks = [...groupToUpdate.tasks, newTask];
+    
+        await updateDoc(groupDocRef, { tasks: updatedTasks });
+        if (currentUser) await fetchData(currentUser);
+    };
+
     const viewTitles: Record<View, string> = {
         entry: 'Saisie Journalière des Opérations',
         finalReport: 'État Bi-mensuel Final',
@@ -556,6 +626,7 @@ const App: React.FC = () => {
         userManagement: 'Gestion des Utilisateurs',
         season: 'Cumul de la Saison',
         annualSummary: 'Résumé Annuel des Rémunérations',
+        tariffManagement: 'Gestion des Tarifs',
     };
 
     const handleViewChange = useCallback((view: View) => {
@@ -601,12 +672,12 @@ const App: React.FC = () => {
                 <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
                     <div className={`transition-opacity duration-150 ${isAnimatingOut ? 'opacity-0' : 'opacity-100'}`}>
                         <div className="print:hidden">
-                            {currentView === 'entry' && <DailyEntryView logs={userLogs} addLog={addLog} deleteLog={deleteLog} finalizedDates={finalizedDates} onToggleFinalize={toggleFinalizeDate} workerGroups={userWorkerGroups} entryDate={entryDate} setEntryDate={setEntryDate} currentUser={currentUser} deleteLogsByDate={deleteLogsByDate} requestConfirmation={requestConfirmation} />}
-                            {currentView === 'finalReport' && <FinalReportView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} onSaveWorkedDays={saveWorkedDays} />}
-                            {currentView === 'payroll' && <PayrollView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} />}
-                            {currentView === 'transferOrder' && <TransferOrderView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} />}
-                            {currentView === 'season' && <SeasonView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} />}
-                            {currentView === 'annualSummary' && <AnnualSummaryView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} />}
+                            {currentView === 'entry' && <DailyEntryView logs={userLogs} addLog={addLog} deleteLog={deleteLog} finalizedDates={finalizedDates} onToggleFinalize={toggleFinalizeDate} workerGroups={userWorkerGroups} entryDate={entryDate} setEntryDate={setEntryDate} currentUser={currentUser} deleteLogsByDate={deleteLogsByDate} requestConfirmation={requestConfirmation} taskGroups={taskGroups} taskMap={taskMap} />}
+                            {currentView === 'finalReport' && <FinalReportView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} onSaveWorkedDays={saveWorkedDays} taskMap={taskMap} />}
+                            {currentView === 'payroll' && <PayrollView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} taskMap={taskMap} />}
+                            {currentView === 'transferOrder' && <TransferOrderView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} taskMap={taskMap} />}
+                            {currentView === 'season' && <SeasonView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} taskMap={taskMap} />}
+                            {currentView === 'annualSummary' && <AnnualSummaryView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} taskMap={taskMap} />}
                             {currentView === 'management' && (
                                 <ManagementView 
                                     workerGroups={userWorkerGroups} onAddGroup={addGroup} onEditGroup={editGroup} onArchiveGroup={archiveGroup}
@@ -627,13 +698,21 @@ const App: React.FC = () => {
                                     onDeleteUserAndData={deleteUserAndData}
                                 />
                             )}
+                             {currentView === 'tariffManagement' && currentUser.role === 'superadmin' && (
+                                <TariffManagementView
+                                    taskGroups={taskGroups}
+                                    onUpdateTask={handleUpdateTask}
+                                    onAddTask={handleAddTask}
+                                    requestConfirmation={requestConfirmation}
+                                />
+                            )}
                         </div>
                         <div className="hidden print:block">
-                            {currentView === 'finalReport' && <FinalReportView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} onSaveWorkedDays={saveWorkedDays} isPrinting />}
-                            {currentView === 'payroll' && <PayrollView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} isPrinting />}
-                            {currentView === 'transferOrder' && <TransferOrderView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} isPrinting />}
-                            {currentView === 'season' && <SeasonView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} isPrinting />}
-                            {currentView === 'annualSummary' && <AnnualSummaryView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} isPrinting />}
+                            {currentView === 'finalReport' && <FinalReportView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} onSaveWorkedDays={saveWorkedDays} isPrinting taskMap={taskMap} />}
+                            {currentView === 'payroll' && <PayrollView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} isPrinting taskMap={taskMap} />}
+                            {currentView === 'transferOrder' && <TransferOrderView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} isPrinting taskMap={taskMap} />}
+                            {currentView === 'season' && <SeasonView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} isPrinting taskMap={taskMap} />}
+                            {currentView === 'annualSummary' && <AnnualSummaryView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} isPrinting taskMap={taskMap} />}
                         </div>
                     </div>
                 </main>

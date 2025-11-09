@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef } from 'react';
-import { DailyLog, Worker, WorkerGroup, WorkedDays } from '../types';
-import { getTaskById, getTaskByIdWithFallback } from '../constants';
+import { DailyLog, Worker, WorkerGroup, WorkedDays, Task } from '../types';
+import { getDynamicTaskByIdWithFallback } from '../constants';
 import WorkerMultiSelect from './WorkerMultiSelect';
 import { playHoverSound } from '../utils/audioUtils';
 import { createRipple, useGlow } from '../utils/effects';
@@ -11,6 +11,7 @@ interface PayrollViewProps {
     allLogs: DailyLog[];
     workerGroups: WorkerGroup[];
     workedDays: WorkedDays[];
+    taskMap: Map<number, Task & { category: string }>;
     isPrinting?: boolean;
 }
 
@@ -32,7 +33,7 @@ interface PayrollData {
 const LAIT_TASK_ID = 37;
 const PANIER_TASK_ID = 47;
 
-const PayrollView: React.FC<PayrollViewProps> = ({ allLogs, workerGroups, workedDays, isPrinting = false }) => {
+const PayrollView: React.FC<PayrollViewProps> = ({ allLogs, workerGroups, workedDays, taskMap, isPrinting = false }) => {
     const optionsCardRef = useRef<HTMLDivElement>(null);
     const reportCardRef = useRef<HTMLDivElement>(null);
     useGlow(optionsCardRef);
@@ -78,7 +79,7 @@ const PayrollView: React.FC<PayrollViewProps> = ({ allLogs, workerGroups, worked
     };
 
     const formatTaskName = (taskId: number): React.ReactNode => {
-        const task = getTaskByIdWithFallback(taskId);
+        const task = getDynamicTaskByIdWithFallback(taskId, taskMap);
         if (!task) return 'Tâche inconnue';
 
         const { category, description } = task;
@@ -172,7 +173,7 @@ const PayrollView: React.FC<PayrollViewProps> = ({ allLogs, workerGroups, worked
     
             const tasksSummary = new Map<number, { quantity: number; price: number }>();
             regularLogs.forEach(log => {
-                const task = getTaskById(log.taskId);
+                const task = taskMap.get(log.taskId);
                 if (!task) return; // Ignore outdated tasks in calculation
     
                 const existing = tasksSummary.get(log.taskId) || { quantity: 0, price: task.price };
@@ -210,8 +211,8 @@ const PayrollView: React.FC<PayrollViewProps> = ({ allLogs, workerGroups, worked
     };
 
     const ReportContent: React.FC<{ data: PayrollData[], id: string }> = ({ data, id }) => {
-        const laitPricePerDay = getTaskById(LAIT_TASK_ID)?.price || 0;
-        const panierPricePerDay = getTaskById(PANIER_TASK_ID)?.price || 0;
+        const laitPricePerDay = taskMap.get(LAIT_TASK_ID)?.price || 0;
+        const panierPricePerDay = taskMap.get(PANIER_TASK_ID)?.price || 0;
         
         const grandTotals = useMemo(() => {
             const totals = {

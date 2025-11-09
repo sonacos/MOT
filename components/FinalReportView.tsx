@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { DailyLog, Worker, WorkerGroup, WorkedDays } from '../types';
-import { getTaskByIdWithFallback } from '../constants';
+import { DailyLog, Worker, WorkerGroup, WorkedDays, Task } from '../types';
+import { getDynamicTaskByIdWithFallback } from '../constants';
 import WorkerMultiSelect from './WorkerMultiSelect';
 import { playHoverSound } from '../utils/audioUtils';
 import { createRipple, useGlow } from '../utils/effects';
@@ -12,6 +12,7 @@ interface FinalReportViewProps {
     workerGroups: WorkerGroup[];
     workedDays: WorkedDays[];
     onSaveWorkedDays: (data: Omit<WorkedDays, 'id' | 'owner'>) => void;
+    taskMap: Map<number, Task & { category: string }>;
     isPrinting?: boolean;
 }
 
@@ -25,7 +26,8 @@ const ReportContent: React.FC<{
     regionalCenter: string;
     startDate: string;
     endDate: string;
-}> = ({ workers, logs, allWorkedDays, year, month, period, regionalCenter, startDate, endDate }) => {
+    taskMap: Map<number, Task & { category: string }>;
+}> = ({ workers, logs, allWorkedDays, year, month, period, regionalCenter, startDate, endDate, taskMap }) => {
     
     const { headerTaskIds, dataMap, columnTotals } = useMemo(() => {
         if (!logs || logs.length === 0) {
@@ -83,7 +85,7 @@ const ReportContent: React.FC<{
                                 <tr>
                                     <th className="text-left py-2 px-4 border border-slate-300">Ouvrier</th>
                                     {headerTaskIds.map(taskId => {
-                                        const task = getTaskByIdWithFallback(taskId);
+                                        const task = getDynamicTaskByIdWithFallback(taskId, taskMap);
                                         return (
                                             <th key={task.id} className="text-center py-2 px-1 border border-slate-300">
                                                 {task.category === 'Opérations Diverses' || task.category === 'À METTRE À JOUR' ? (
@@ -146,7 +148,7 @@ const ReportContent: React.FC<{
     );
 };
 
-const FinalReportView: React.FC<FinalReportViewProps> = ({ allLogs, workerGroups, workedDays, onSaveWorkedDays, isPrinting = false }) => {
+const FinalReportView: React.FC<FinalReportViewProps> = ({ allLogs, workerGroups, workedDays, onSaveWorkedDays, taskMap, isPrinting = false }) => {
     const optionsCardRef = useRef<HTMLDivElement>(null);
     const daysEntryCardRef = useRef<HTMLDivElement>(null);
     const reportCardRef = useRef<HTMLDivElement>(null);
@@ -253,7 +255,7 @@ const FinalReportView: React.FC<FinalReportViewProps> = ({ allLogs, workerGroups
     };
 
     if (isPrinting && reportData) {
-        return <ReportContent {...reportData} year={selectedYear} month={selectedMonth} period={selectedPeriod} regionalCenter={regionalCenter} />;
+        return <ReportContent {...reportData} year={selectedYear} month={selectedMonth} period={selectedPeriod} regionalCenter={regionalCenter} taskMap={taskMap} />;
     }
 
     const years = Array.from({ length: 10 }, (_, i) => new Date().getFullYear() - i);
@@ -336,7 +338,7 @@ const FinalReportView: React.FC<FinalReportViewProps> = ({ allLogs, workerGroups
                         />
                     </div>
                     <div className="bg-white shadow-2xl mx-auto max-w-6xl" id="final-report-content">
-                        <ReportContent {...reportData} year={selectedYear} month={selectedMonth} period={selectedPeriod} regionalCenter={regionalCenter} />
+                        <ReportContent {...reportData} year={selectedYear} month={selectedMonth} period={selectedPeriod} regionalCenter={regionalCenter} taskMap={taskMap} />
                     </div>
                 </div>
             )}

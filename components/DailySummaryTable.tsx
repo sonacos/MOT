@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
-import { DailyLog, Worker, User } from '../types';
-import { getTaskById, getTaskByIdWithFallback, TASK_GROUPS } from '../constants';
+import { DailyLog, Worker, User, TaskGroup, Task } from '../types';
+import { getDynamicTaskByIdWithFallback } from '../constants';
 import { playHoverSound, playClickSound } from '../utils/audioUtils';
 import Modal from './Modal';
 import SearchableSelect from './SearchableSelect';
@@ -15,18 +15,12 @@ interface DailySummaryTableProps {
     isCompact: boolean;
     currentUser: User;
     requestConfirmation: (title: string, message: string | React.ReactNode, onConfirm: () => void) => void;
+    taskGroups: TaskGroup[];
+    taskMap: Map<number, Task & { category: string }>;
 }
 
-const taskOptions = TASK_GROUPS.map(group => ({
-    label: group.category,
-    options: group.tasks.map(task => ({
-        label: task.description,
-        value: task.id,
-        category: group.category
-    }))
-}));
 
-const DailySummaryTable: React.FC<DailySummaryTableProps> = ({ logs, workers, date, addLog, deleteLog, isDayFinalized, isCompact, currentUser, requestConfirmation }) => {
+const DailySummaryTable: React.FC<DailySummaryTableProps> = ({ logs, workers, date, addLog, deleteLog, isDayFinalized, isCompact, currentUser, requestConfirmation, taskGroups, taskMap }) => {
     
     const [draftQuantities, setDraftQuantities] = useState<Record<string, string>>({});
     const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -36,6 +30,16 @@ const DailySummaryTable: React.FC<DailySummaryTableProps> = ({ logs, workers, da
     const [isResolveModalOpen, setResolveModalOpen] = useState(false);
     const [resolvingLogs, setResolvingLogs] = useState<DailyLog[]>([]);
     const [newTaskId, setNewTaskId] = useState<number | null>(null);
+
+    const taskOptions = useMemo(() => taskGroups.map(group => ({
+        label: group.category,
+        options: group.tasks.map(task => ({
+            label: task.description,
+            value: task.id,
+            category: group.category
+        }))
+    })), [taskGroups]);
+
 
     const openResolveModal = (logs: DailyLog[]) => {
         if (isDayFinalized || logs.length === 0) return;
@@ -96,13 +100,13 @@ const DailySummaryTable: React.FC<DailySummaryTableProps> = ({ logs, workers, da
             }
             workerMap.get(taskId)!.push(log);
             
-            if (getTaskById(taskId)) { // Only sum valid tasks for totals
+            if (taskMap.has(taskId)) { // Only sum valid tasks for totals
                 totals.set(taskId, (totals.get(taskId) || 0) + quantity);
             }
         }
         
         return { headerTaskIds: sortedTaskIds, dataMap, columnTotals: totals };
-    }, [logs]);
+    }, [logs, taskMap]);
 
     useEffect(() => {
         const newDrafts: Record<string, string> = {};
@@ -190,7 +194,7 @@ const DailySummaryTable: React.FC<DailySummaryTableProps> = ({ logs, workers, da
     const handleDeleteCell = (workerId: number, taskId: number) => {
         if (isDayFinalized) return;
         const workerName = workers.find(w => w.id === workerId)?.name;
-        const taskName = getTaskById(taskId)?.description;
+        const taskName = taskMap.get(taskId)?.description;
         
         const existingLogs = dataMap.get(workerId)?.get(taskId) || [];
         if (existingLogs.length === 0) return;
@@ -226,7 +230,7 @@ const DailySummaryTable: React.FC<DailySummaryTableProps> = ({ logs, workers, da
                                 Ouvrier
                             </th>
                             {headerTaskIds.map(taskId => {
-                                const task = getTaskByIdWithFallback(taskId);
+                                const task = getDynamicTaskByIdWithFallback(taskId, taskMap);
                                 return (
                                     <th key={task.id} scope="col" className={`border-b-2 border-r border-slate-500 text-center font-semibold ${isCompact ? 'min-w-[70px] px-1 py-1.5' : 'min-w-[120px] px-2 py-3'}`}>
                                         {task.category === 'Opérations Diverses' || task.category === 'À METTRE À JOUR' ? (
@@ -251,7 +255,7 @@ const DailySummaryTable: React.FC<DailySummaryTableProps> = ({ logs, workers, da
                                         {worker.name}
                                     </td>
                                     {headerTaskIds.map(taskId => {
-                                        const isOutdated = !getTaskById(taskId);
+                                        const isOutdated = !taskMap.has(taskId);
                                         const key = `${worker.id}-${taskId}`;
                                         const logsForCell = dataMap.get(worker.id)?.get(taskId) || [];
                                         const quantity = logsForCell.reduce((sum, log) => sum + Number(log.quantity), 0);

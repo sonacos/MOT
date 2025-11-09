@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef } from 'react';
-import { DailyLog, WorkerGroup, User } from '../types';
-import { TASK_GROUPS, getTaskByIdWithFallback } from '../constants';
+import { DailyLog, WorkerGroup, User, TaskGroup, Task } from '../types';
+import { getDynamicTaskByIdWithFallback } from '../constants';
 import WorkerMultiSelect from './WorkerMultiSelect';
 import SearchableSelect from './SearchableSelect';
 import DailySummaryTable from './DailySummaryTable';
@@ -21,18 +21,11 @@ interface DailyEntryViewProps {
     currentUser: User;
     deleteLogsByDate: (date: string) => void;
     requestConfirmation: (title: string, message: string | React.ReactNode, onConfirm: () => void) => void;
+    taskGroups: TaskGroup[];
+    taskMap: Map<number, Task & { category: string }>;
 }
 
-const taskOptions = TASK_GROUPS.map(group => ({
-    label: group.category,
-    options: group.tasks.map(task => ({
-        label: task.description,
-        value: task.id,
-        category: group.category
-    }))
-}));
-
-const DailyEntryView: React.FC<DailyEntryViewProps> = ({ logs, addLog, deleteLog, finalizedDates, onToggleFinalize, workerGroups, entryDate, setEntryDate, currentUser, deleteLogsByDate, requestConfirmation }) => {
+const DailyEntryView: React.FC<DailyEntryViewProps> = ({ logs, addLog, deleteLog, finalizedDates, onToggleFinalize, workerGroups, entryDate, setEntryDate, currentUser, deleteLogsByDate, requestConfirmation, taskGroups, taskMap }) => {
     const [selectedWorkerIds, setSelectedWorkerIds] = useState<number[]>([]);
     const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
     const [quantity, setQuantity] = useState<number | ''>('');
@@ -45,6 +38,15 @@ const DailyEntryView: React.FC<DailyEntryViewProps> = ({ logs, addLog, deleteLog
     useGlow(entryCardRef);
     useGlow(dailyCardRef);
     
+    const taskOptions = useMemo(() => taskGroups.map(group => ({
+        label: group.category,
+        options: group.tasks.map(task => ({
+            label: task.description,
+            value: task.id,
+            category: group.category
+        }))
+    })), [taskGroups]);
+
     const allWorkers = useMemo(() => 
         workerGroups.filter(g => g && Array.isArray(g.workers)).flatMap(g => g.workers)
     , [workerGroups]);
@@ -225,6 +227,8 @@ const DailyEntryView: React.FC<DailyEntryViewProps> = ({ logs, addLog, deleteLog
                         isCompact={isCompactMode}
                         currentUser={currentUser}
                         requestConfirmation={requestConfirmation}
+                        taskGroups={taskGroups}
+                        taskMap={taskMap}
                     />
                 </div>
             </div>

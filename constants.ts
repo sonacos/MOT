@@ -1,6 +1,6 @@
 import { Task, TaskGroup } from './types';
 
-export const TASK_GROUPS: TaskGroup[] = [
+export const INITIAL_TASK_GROUPS: TaskGroup[] = [
   {
     category: 'Réception',
     tasks: [
@@ -79,12 +79,12 @@ export const TASK_GROUPS: TaskGroup[] = [
     tasks: [
       { id: 25, description: 'Bettrave, tournesol, luzerne, mais (10 kg)', unit: 'par quintal', price: 1.20 },
       { id: 26, description: 'Céréales, mais, l\'orge, luzerne, légumineuse(100 kg)', unit: 'par quintal', price: 1.10 },
-      { id: 62, description: 'APPROVISIONEMENT - Céréales, mais, l\'orge, luzerne, légumineuse, riz(50 kg)', unit: 'par quintal', price: 1.40 },
-      { id: 63, description: 'VENTE AU CENTRE - Céréales, mais, l\'orge, luzerne, légumineuse, riz(50 kg)', unit: 'par quintal', price: 1.40 },
-      { id: 64, description: 'TRANSFERT HORS ZONE - Céréales, mais, l\'orge, luzerne, légumineuse, riz(50 kg)', unit: 'par quintal', price: 1.40 },
-      { id: 68, description: 'APPROVISIONEMENT - Mais, orge, luzerne, légumineuse, riz(25 à 40 kg)', unit: 'par quintal', price: 1.55 },
-      { id: 69, description: 'VENTE AU CENTRE - Mais, orge, luzerne, légumineuse, riz(25 à 40 kg)', unit: 'par quintal', price: 1.55 },
-      { id: 70, description: 'TRANSFERT HORS ZONE - Mais, orge, luzerne, légumineuse, riz(25 à 40 kg)', unit: 'par quintal', price: 1.55 },
+      { id: 62, description: 'APPROVISIONEMENT - Céréales, mais, l\'orge, luzerne, légumineuse, riz(50 kg)', unit: 'par quintal', price: 1.35 },
+      { id: 63, description: 'VENTE AU CENTRE - Céréales, mais, l\'orge, luzerne, légumineuse, riz(50 kg)', unit: 'par quintal', price: 1.35 },
+      { id: 64, description: 'TRANSFERT HORS ZONE - Céréales, mais, l\'orge, luzerne, légumineuse, riz(50 kg)', unit: 'par quintal', price: 1.35 },
+      { id: 68, description: 'APPROVISIONEMENT - Mais, orge, luzerne, légumineuse, riz(25 à 40 kg)', unit: 'par quintal', price: 1.50 },
+      { id: 69, description: 'VENTE AU CENTRE - Mais, orge, luzerne, légumineuse, riz(25 à 40 kg)', unit: 'par quintal', price: 1.50 },
+      { id: 70, description: 'TRANSFERT HORS ZONE - Mais, orge, luzerne, légumineuse, riz(25 à 40 kg)', unit: 'par quintal', price: 1.50 },
       { id: 29, description: 'Avoine et tournesol (plus de 70 kg)', unit: 'par quintal', price: 1.25 },
       { id: 30, description: 'Avoine et tournesol (moins de 70 kg)', unit: 'par quintal', price: 1.60 },
       { id: 31, description: 'Pomme de Terre 50 kg', unit: 'par quintal', price: 1.70 },
@@ -115,29 +115,13 @@ export const TASK_GROUPS: TaskGroup[] = [
   },
 ];
 
-export const ALL_TASKS_WITH_CATEGORY: (Task & { category: string })[] = TASK_GROUPS.flatMap(group => 
-    group.tasks.map(task => ({ ...task, category: group.category }))
-);
-
-export const TASK_MAP = new Map<number, Task & { category: string }>();
-ALL_TASKS_WITH_CATEGORY.forEach(task => {
-    TASK_MAP.set(task.id, task);
-});
-
 /**
- * Retrieves a task by its ID. Returns undefined if not found.
+ * Retrieves a task by its ID from a dynamic map, providing a fallback placeholder for outdated/unknown IDs.
  * @param taskId The ID of the task to retrieve.
+ * @param taskMap The dynamic map of tasks.
  */
-export const getTaskById = (taskId: number): (Task & { category: string }) | undefined => {
-    return TASK_MAP.get(taskId);
-};
-
-/**
- * Retrieves a task by its ID, providing a fallback placeholder for outdated/unknown IDs.
- * @param taskId The ID of the task to retrieve.
- */
-export const getTaskByIdWithFallback = (taskId: number): Task & { category: string } => {
-    return TASK_MAP.get(taskId) || {
+export const getDynamicTaskByIdWithFallback = (taskId: number, taskMap: Map<number, Task & { category: string }>): Task & { category: string } => {
+    return taskMap.get(taskId) || {
         id: taskId,
         description: `Tâche obsolète (ID: ${taskId})`,
         category: 'À METTRE À JOUR',

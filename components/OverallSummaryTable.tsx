@@ -1,15 +1,19 @@
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
-import { DailyLog, Worker } from '../types';
-import { getTaskByIdWithFallback } from '../constants';
+// FIX: Import Task type to use in props.
+import { DailyLog, Worker, Task } from '../types';
+// FIX: Corrected the import name to match the exported function in constants.ts.
+import { getDynamicTaskByIdWithFallback } from '../constants';
 import { playHoverSound } from '../utils/audioUtils';
 
 interface OverallSummaryTableProps {
     allLogs: DailyLog[];
     workers: Worker[];
     isCompact: boolean;
+    // FIX: Added taskMap to props to allow dynamic task lookups.
+    taskMap: Map<number, Task & { category: string }>;
 }
 
-const OverallSummaryTable: React.FC<OverallSummaryTableProps> = ({ allLogs, workers, isCompact }) => {
+const OverallSummaryTable: React.FC<OverallSummaryTableProps> = ({ allLogs, workers, isCompact, taskMap }) => {
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const [showLeftShadow, setShowLeftShadow] = useState(false);
     const [showRightShadow, setShowRightShadow] = useState(false);
@@ -96,7 +100,8 @@ const OverallSummaryTable: React.FC<OverallSummaryTableProps> = ({ allLogs, work
                                 Ouvrier
                             </th>
                             {headerTaskIds.map(taskId => {
-                                const task = getTaskByIdWithFallback(taskId);
+                                // FIX: Updated function call to pass the required taskMap.
+                                const task = getDynamicTaskByIdWithFallback(taskId, taskMap);
                                 return (
                                      <th key={task.id} scope="col" className={`border-b-2 border-r border-slate-500 text-center font-semibold ${isCompact ? 'min-w-[70px] px-1 py-1.5' : 'min-w-[120px] px-2 py-3'}`}>
                                         {task.category === 'Opérations Diverses' || task.category === 'À METTRE À JOUR' ? (

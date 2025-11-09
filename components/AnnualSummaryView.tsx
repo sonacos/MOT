@@ -1,6 +1,5 @@
 import React, { useState, useMemo, useRef } from 'react';
-import { DailyLog, Worker, WorkerGroup, WorkedDays } from '../types';
-import { TASK_MAP } from '../constants';
+import { DailyLog, Worker, WorkerGroup, WorkedDays, Task } from '../types';
 import { playHoverSound } from '../utils/audioUtils';
 import { createRipple, useGlow } from '../utils/effects';
 import { printElement, exportToExcel, exportToPDF } from '../utils/exportUtils';
@@ -10,6 +9,7 @@ interface AnnualSummaryViewProps {
     allLogs: DailyLog[];
     workerGroups: WorkerGroup[];
     workedDays: WorkedDays[];
+    taskMap: Map<number, Task & { category: string }>;
     isPrinting?: boolean;
 }
 
@@ -27,7 +27,7 @@ interface AnnualSummaryData {
 const LAIT_TASK_ID = 37;
 const PANIER_TASK_ID = 47;
 
-const AnnualSummaryView: React.FC<AnnualSummaryViewProps> = ({ allLogs, workerGroups, workedDays, isPrinting = false }) => {
+const AnnualSummaryView: React.FC<AnnualSummaryViewProps> = ({ allLogs, workerGroups, workedDays, taskMap, isPrinting = false }) => {
     const optionsCardRef = useRef<HTMLDivElement>(null);
     const reportCardRef = useRef<HTMLDivElement>(null);
     useGlow(optionsCardRef);
@@ -82,7 +82,7 @@ const AnnualSummaryView: React.FC<AnnualSummaryViewProps> = ({ allLogs, workerGr
             const regularLogs = workerLogs.filter(log => log.taskId !== LAIT_TASK_ID && log.taskId !== PANIER_TASK_ID);
 
             const totalOperation = regularLogs.reduce((sum, log) => {
-                const task = TASK_MAP.get(log.taskId);
+                const task = taskMap.get(log.taskId);
                 return sum + (Number(log.quantity) * (task?.price || 0));
             }, 0);
 
@@ -90,8 +90,8 @@ const AnnualSummaryView: React.FC<AnnualSummaryViewProps> = ({ allLogs, workerGr
             const totalBrut = totalOperation + anciennete;
             const retenu = totalBrut * 0.0674;
             
-            const laitPricePerDay = TASK_MAP.get(LAIT_TASK_ID)?.price || 0;
-            const panierPricePerDay = TASK_MAP.get(PANIER_TASK_ID)?.price || 0;
+            const laitPricePerDay = taskMap.get(LAIT_TASK_ID)?.price || 0;
+            const panierPricePerDay = taskMap.get(PANIER_TASK_ID)?.price || 0;
             const indemnites = joursTravailles * (laitPricePerDay + panierPricePerDay);
             
             const netPay = totalBrut - retenu + indemnites;

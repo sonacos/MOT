@@ -1,6 +1,6 @@
 import React, { useMemo, useRef, useState, useCallback, useEffect } from 'react';
-import { DailyLog, Worker, WorkerGroup, WorkedDays } from '../types';
-import { getTaskByIdWithFallback } from '../constants';
+import { DailyLog, Worker, WorkerGroup, WorkedDays, Task } from '../types';
+import { getDynamicTaskByIdWithFallback } from '../constants';
 import { useGlow } from '../utils/effects';
 import { printElement, exportToExcel, exportToPDF } from '../utils/exportUtils';
 import ExportMenu from './ExportMenu';
@@ -26,10 +26,11 @@ interface SeasonViewProps {
     allLogs: DailyLog[];
     workerGroups: WorkerGroup[];
     workedDays: WorkedDays[];
+    taskMap: Map<number, Task & { category: string }>;
     isPrinting?: boolean;
 }
 
-const SeasonView: React.FC<SeasonViewProps> = ({ allLogs, workerGroups, workedDays, isPrinting = false }) => {
+const SeasonView: React.FC<SeasonViewProps> = ({ allLogs, workerGroups, workedDays, taskMap, isPrinting = false }) => {
     const reportCardRef = useRef<HTMLDivElement>(null);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const [showLeftShadow, setShowLeftShadow] = useState(false);
@@ -170,7 +171,7 @@ const SeasonView: React.FC<SeasonViewProps> = ({ allLogs, workerGroups, workedDa
                                 <th scope="col" className="border-b-2 border-r border-slate-500 min-w-[160px] sticky left-0 bg-sonacos-slate-dark z-10 font-semibold px-4 py-3">Ouvrier</th>
                                 <th scope="col" className="border-b-2 border-r border-slate-500 text-center font-semibold min-w-[120px] px-2 py-3">Total Jours Travaillés</th>
                                 {headerTaskIds.map(taskId => {
-                                    const task = getTaskByIdWithFallback(taskId);
+                                    const task = getDynamicTaskByIdWithFallback(taskId, taskMap);
                                     return (
                                         <th key={task.id} scope="col" className="border-b-2 border-r border-slate-500 text-center font-semibold min-w-[120px] px-2 py-3">
                                             {task.category === 'Opérations Diverses' || task.category === 'À METTRE À JOUR' ? (
