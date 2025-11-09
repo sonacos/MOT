@@ -43,7 +43,6 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({ logs, finalizedDates, c
         const uniqueDates = Array.from(dateSet);
 
         const groups = new Map<string, string[]>();
-        // FIX: Explicitly type the 'date' parameter as 'string' to resolve type inference issues.
         uniqueDates.forEach((date: string) => {
             const key = getPeriodKey(date);
             if (!groups.has(key)) {
@@ -56,7 +55,6 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({ logs, finalizedDates, c
         groups.forEach((dates) => dates.sort((a, b) => b.localeCompare(a)));
 
         // Sort the period keys themselves in reverse chronological order
-        // FIX: Explicitly type the sort callback parameters 'a' and 'b' as strings to resolve TS error.
         const sortedKeys = Array.from(groups.keys()).sort((a: string, b: string) => {
             const [yearA, monthA, periodA] = a.split('-');
             const [yearB, monthB, periodB] = b.split('-');
