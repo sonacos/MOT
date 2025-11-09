@@ -1,6 +1,40 @@
-// This tells TypeScript that these variables will be available globally (from the CDN scripts)
-declare const html2canvas: any;
-declare const jspdf: any;
+// A global cache for loaded script promises to avoid reloading.
+const loadedScripts: Record<string, Promise<void>> = {};
+
+/**
+ * Dynamically loads a script and returns a promise that resolves when it's loaded.
+ * @param src The URL of the script to load.
+ */
+function loadScript(src: string): Promise<void> {
+    if (loadedScripts[src]) {
+        return loadedScripts[src];
+    }
+
+    const promise = new Promise<void>((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = src;
+        script.onload = () => resolve();
+        script.onerror = () => reject(new Error(`Failed to load script: ${src}`));
+        document.head.appendChild(script);
+    });
+
+    loadedScripts[src] = promise;
+    return promise;
+}
+
+// A single promise to ensure both libraries are loaded, and only once.
+let pdfLibrariesPromise: Promise<[void, void]> | null = null;
+
+function ensurePdfLibrariesLoaded(): Promise<[void, void]> {
+    if (!pdfLibrariesPromise) {
+        pdfLibrariesPromise = Promise.all([
+            loadScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js'),
+            loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js')
+        ]);
+    }
+    return pdfLibrariesPromise;
+}
+
 
 /**
  * Clones a DOM element and cleans it for export by replacing inputs with their values.
@@ -190,18 +224,23 @@ export const exportToExcel = (elementId: string, fileName: string) => {
 
 /**
  * Exports a DOM element to a single-page PDF file using html2canvas and jsPDF.
- * The content is scaled to fit within the margins of one page.
+ * This function now dynamically loads the required libraries to prevent race conditions.
  * @param elementId The ID of the element to capture.
  * @param fileName The name of the PDF file.
  * @param orientation 'portrait' or 'landscape'.
  */
 export const exportToPDF = async (elementId: string, fileName:string, orientation: 'portrait' | 'landscape' = 'landscape') => {
-    if (typeof html2canvas === 'undefined' || typeof jspdf === 'undefined') {
-        alert("Les librairies d'exportation PDF ne sont pas chargées. Veuillez rafraîchir la page et réessayer.");
+    try {
+        await ensurePdfLibrariesLoaded();
+    } catch (error) {
+        console.error(error);
+        alert("Impossible de charger les librairies d'exportation PDF. Veuillez vérifier votre connexion internet et réessayer.");
         return;
     }
     
-    const { jsPDF } = jspdf;
+    // The libraries are now guaranteed to be on the window object.
+    const { jsPDF } = (window as any).jspdf;
+    const html2canvas = (window as any).html2canvas;
     
     const clone = getCleanClonedElement(elementId);
     if (!clone) return;
