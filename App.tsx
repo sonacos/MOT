@@ -1,6 +1,7 @@
 
 
 
+
 import React, { useState, useCallback, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import { DailyLog, WorkerGroup, Worker, WorkedDays, User, UserRole, Task, TaskGroup, SavedFinalReport, SavedPayroll, SavedTransferOrder, SavedAnnualSummary, PayrollData, TransferOrderData } from './types';
@@ -863,76 +864,79 @@ const App: React.FC = () => {
     const renderExportComponent = () => {
         if (!exportRequest || !currentUser) return null;
         const { report, type } = exportRequest;
-
-        // Dummy functions to satisfy prop requirements for non-interactive rendering
         const noOp = () => {};
-        const noOpPromise = async () => {};
-
-        // All components receive the full 'report' object via the 'viewingReport' prop,
-        // which they are designed to handle internally for printing/viewing.
-        // They also receive all necessary global data and dummy handlers to prevent crashes.
+    
+        // This function ensures that the report component, when rendered for export,
+        // receives the exact same set of props it would in a normal interactive render.
+        // This prevents subtle bugs caused by missing props or different data contexts.
         switch (type) {
             case 'finalReport':
                 return <FinalReportView
+                    {...{
+                        allLogs: logs,
+                        workerGroups: workerGroups,
+                        workedDays: workedDays,
+                        taskMap: taskMap,
+                        savedReports: savedFinalReports,
+                        onSave: handleSaveFinalReport,
+                        onSavePayroll: handleSavePayroll,
+                        onSaveTransferOrder: handleSaveTransferOrder,
+                        onDelete: handleDeleteFinalReport,
+                        onSaveWorkedDays: saveWorkedDays,
+                        requestConfirmation: requestConfirmation,
+                        currentUser: currentUser,
+                        onDirectExport: noOp,
+                    }}
                     isPrinting
-                    // FIX: Use the 'logs' state variable, as 'allLogs' is not defined in this scope.
-                    allLogs={logs}
-                    workerGroups={workerGroups}
-                    workedDays={workedDays}
-                    taskMap={taskMap}
-                    savedReports={[]}
-                    onSave={noOpPromise}
-                    onSavePayroll={noOpPromise}
-                    onSaveTransferOrder={noOpPromise}
-                    onDelete={noOp}
-                    onSaveWorkedDays={noOp}
-                    requestConfirmation={noOp}
-                    currentUser={currentUser}
-                    onDirectExport={noOp}
                     viewingReport={report}
                 />;
             case 'payroll':
                 return <PayrollView
+                     {...{
+                        workerGroups: workerGroups,
+                        taskMap: taskMap,
+                        savedReports: savedPayrolls,
+                        onSave: handleSavePayroll,
+                        onDelete: handleDeletePayroll,
+                        requestConfirmation: requestConfirmation,
+                        currentUser: currentUser,
+                        onDirectExport: noOp,
+                        onRetroactiveGenerate: handleRetroactiveGeneration,
+                    }}
                     isPrinting
-                    workerGroups={workerGroups}
-                    taskMap={taskMap}
-                    savedReports={[]}
-                    onSave={noOp}
-                    onDelete={noOp}
-                    requestConfirmation={noOp}
-                    currentUser={currentUser}
-                    onDirectExport={noOp}
-                    onRetroactiveGenerate={noOp}
                     viewingReport={report}
                 />;
             case 'transferOrder':
                 return <TransferOrderView
+                     {...{
+                        workerGroups: workerGroups,
+                        taskMap: taskMap,
+                        savedReports: savedTransferOrders,
+                        onSave: handleSaveTransferOrder,
+                        onDelete: handleDeleteTransferOrder,
+                        requestConfirmation: requestConfirmation,
+                        currentUser: currentUser,
+                        onDirectExport: noOp,
+                    }}
                     isPrinting
-                    workerGroups={workerGroups}
-                    taskMap={taskMap}
-                    savedReports={[]}
-                    onSave={noOp}
-                    onDelete={noOp}
-                    requestConfirmation={noOp}
-                    currentUser={currentUser}
-                    onDirectExport={noOp}
                     viewingReport={report}
                 />;
             case 'annualSummary':
                  return <AnnualSummaryView
+                     {...{
+                        allLogs: logs,
+                        workerGroups: workerGroups,
+                        workedDays: workedDays,
+                        taskMap: taskMap,
+                        savedReports: savedAnnualSummaries,
+                        savedFinalReports: savedFinalReports,
+                        onSave: handleSaveAnnualSummary,
+                        onDelete: handleDeleteAnnualSummary,
+                        requestConfirmation: requestConfirmation,
+                        currentUser: currentUser,
+                        onDirectExport: noOp,
+                    }}
                     isPrinting
-                    // FIX: Use the 'logs' state variable, as 'allLogs' is not defined in this scope.
-                    allLogs={logs}
-                    workerGroups={workerGroups}
-                    workedDays={workedDays}
-                    taskMap={taskMap}
-                    savedReports={[]}
-                    savedFinalReports={savedFinalReports}
-                    onSave={noOp}
-                    onDelete={noOp}
-                    requestConfirmation={noOp}
-                    currentUser={currentUser}
-                    onDirectExport={noOp}
                     viewingReport={report}
                 />;
             default:
