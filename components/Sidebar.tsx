@@ -4,7 +4,7 @@ import { createRipple } from '../utils/effects';
 import HistorySidebar from './HistorySidebar';
 import { DailyLog, User } from '../types';
 
-type View = 'entry' | 'management' | 'payroll' | 'transferOrder' | 'userManagement' | 'season' | 'finalReport';
+type View = 'entry' | 'management' | 'payroll' | 'transferOrder' | 'userManagement' | 'season' | 'finalReport' | 'annualSummary';
 
 interface SidebarProps {
     currentView: View;
@@ -113,7 +113,15 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange, logs, fina
                     isActive={currentView === 'season'}
                     onClick={(e) => handleNavClick(e, 'season')}
                     icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5 3a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V5a2 2 0 00-2-2H5zm9 4a1 1 0 10-2 0v6a1 1 0 102 0V7zm-3 2a1 1 0 10-2 0v4a1 1 0 102 0V9zm-3 3a1 1 0 10-2 0v1a1 1 0 102 0v-1z" clipRule="evenodd" /></svg>}
-                    colorClass={currentUser.role === 'superadmin' ? navColors[6] : navColors[5]}
+                    colorClass={navColors[5]}
+                />
+                <NavButton 
+                    view="annualSummary"
+                    label="Résumé Annuel"
+                    isActive={currentView === 'annualSummary'}
+                    onClick={(e) => handleNavClick(e, 'annualSummary')}
+                    icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clipRule="evenodd" /></svg>}
+                    colorClass={navColors[5]}
                 />
                  {currentUser.role === 'superadmin' && (
                     <NavButton 
@@ -122,7 +130,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange, logs, fina
                         isActive={currentView === 'userManagement'}
                         onClick={(e) => handleNavClick(e, 'userManagement')}
                         icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M18 8a6 6 0 11-12 0 6 6 0 0112 0zM7 8a4 4 0 118 0 4 4 0 01-8 0zM4 15a1 1 0 001 1h10a1 1 0 100-2H5a1 1 0 00-1 1z" clipRule="evenodd" /></svg>}
-                        colorClass={navColors[5]}
+                        colorClass={navColors[6]}
                     />
                 )}
             </nav>

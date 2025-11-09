@@ -8,6 +8,7 @@ import PayrollView from './components/PayrollView';
 import TransferOrderView from './components/TransferOrderView';
 import UserManagementView from './components/UserManagementView';
 import SeasonView from './components/SeasonView';
+import AnnualSummaryView from './components/AnnualSummaryView';
 import LoginView from './components/LoginView';
 import ConfirmationModal from './components/ConfirmationModal';
 import { unlockAudio } from './utils/audioUtils';
@@ -33,7 +34,7 @@ import {
 const DEPARTED_GROUP_ID = 9999;
 
 const App: React.FC = () => {
-    type View = 'entry' | 'management' | 'payroll' | 'transferOrder' | 'userManagement' | 'season' | 'finalReport';
+    type View = 'entry' | 'management' | 'payroll' | 'transferOrder' | 'userManagement' | 'season' | 'finalReport' | 'annualSummary';
     const [currentView, setCurrentView] = useState<View>('entry');
     const [isAnimatingOut, setIsAnimatingOut] = useState(false);
     const [entryDate, setEntryDate] = useState(new Date().toISOString().split('T')[0]);
@@ -554,6 +555,7 @@ const App: React.FC = () => {
         transferOrder: 'Ordre de Virement Bancaire',
         userManagement: 'Gestion des Utilisateurs',
         season: 'Cumul de la Saison',
+        annualSummary: 'Résumé Annuel des Rémunérations',
     };
 
     const handleViewChange = useCallback((view: View) => {
@@ -604,6 +606,7 @@ const App: React.FC = () => {
                             {currentView === 'payroll' && <PayrollView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} />}
                             {currentView === 'transferOrder' && <TransferOrderView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} />}
                             {currentView === 'season' && <SeasonView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} />}
+                            {currentView === 'annualSummary' && <AnnualSummaryView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} />}
                             {currentView === 'management' && (
                                 <ManagementView 
                                     workerGroups={userWorkerGroups} onAddGroup={addGroup} onEditGroup={editGroup} onArchiveGroup={archiveGroup}
@@ -630,6 +633,7 @@ const App: React.FC = () => {
                             {currentView === 'payroll' && <PayrollView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} isPrinting />}
                             {currentView === 'transferOrder' && <TransferOrderView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} isPrinting />}
                             {currentView === 'season' && <SeasonView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} isPrinting />}
+                            {currentView === 'annualSummary' && <AnnualSummaryView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} isPrinting />}
                         </div>
                     </div>
                 </main>
