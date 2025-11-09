@@ -5,7 +5,9 @@ export const TASK_GROUPS: TaskGroup[] = [
     category: 'Réception',
     tasks: [
       { id: 1, description: 'Bettrave, tournesol, luzerne, mais (10 kg)', unit: 'par quintal', price: 1.20 },
-      { id: 2, description: 'Céréales, mais, tournesol, l\'orge, luzerne, Légumineuse (100 kg)', unit: 'par quintal', price: 1.05 },
+      { id: 71, description: 'RÉCEPTION BRUT - Céréales, mais, tournesol, l\'orge, luzerne, Légumineuse (100 kg)', unit: 'par quintal', price: 1.05 },
+      { id: 72, description: 'RÉCEPTION TRANFERTS HORS ZONE - Céréales, mais, tournesol, l\'orge, luzerne, Légumineuse (100 kg)', unit: 'par quintal', price: 1.05 },
+      { id: 73, description: 'RÉCEPTION BIG BAG - Céréales, mais, tournesol, l\'orge, luzerne, Légumineuse (100 kg)', unit: 'par quintal', price: 1.05 },
       { id: 3, description: 'Céréales, mais, tournesol, l\'orge, luzerne, Légumineuse, riz (50 kg)', unit: 'par quintal', price: 1.35 },
       { id: 4, description: 'Céréales en vrac', unit: 'par quintal', price: 0.80 },
       { id: 5, description: 'Mais, tournesol, orge, luzerne, Légumineuse, riz (25 à 40 kg)', unit: 'par quintal', price: 1.50 },
