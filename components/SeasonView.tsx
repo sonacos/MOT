@@ -63,13 +63,14 @@ const SeasonView: React.FC<SeasonViewProps> = ({ allLogs, workerGroups, workedDa
             return entryDateUTC >= seasonStartUTC && entryDateUTC < seasonEndUTC;
         });
 
-        const activeWorkers = workerGroups
-            .filter(g => g && !g.isArchived && Array.isArray(g.workers))
-            .flatMap(g => g.workers.filter(w => w && !w.isArchived));
+        // Get ALL workers, including those from archived/departed groups, to ensure their seasonal activity is counted.
+        const allWorkersFromAllGroups = workerGroups
+            .filter(g => g && Array.isArray(g.workers))
+            .flatMap(g => g.workers.filter(w => w)); // filter(w => w) for safety
 
         const data = new Map<number, { worker: Worker; tasks: Map<number, number>; workedDays: number }>();
         
-        activeWorkers.forEach(worker => {
+        allWorkersFromAllGroups.forEach(worker => {
             data.set(worker.id, {
                 worker,
                 tasks: new Map<number, number>(),
@@ -94,6 +95,7 @@ const SeasonView: React.FC<SeasonViewProps> = ({ allLogs, workerGroups, workedDa
             }
         });
 
+        // Filter the final list to show only workers who had activity during the season.
         const finalData = Array.from(data.values()).filter(d => d.tasks.size > 0 || d.workedDays > 0);
         finalData.sort((a, b) => a.worker.name.localeCompare(b.worker.name));
         
