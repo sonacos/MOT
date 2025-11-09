@@ -94,7 +94,7 @@ export const printElement = (elementId: string, title: string, orientation: 'por
     printWindow.document.write(`
         <html>
             <head>
-                <title>${title}</title>
+                <title>&nbsp;</title> <!-- Set a non-breaking space as title to prevent browser from adding filename to print header -->
                 <script src="https://cdn.tailwindcss.com"></script>
                 <style>
                     @page { 
