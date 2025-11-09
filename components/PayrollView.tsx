@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { DailyLog, Worker, WorkerGroup, WorkedDays } from '../types';
-import { TASK_MAP } from '../constants';
+import { getTaskById, getTaskByIdWithFallback } from '../constants';
 import WorkerMultiSelect from './WorkerMultiSelect';
 import { playHoverSound } from '../utils/audioUtils';
 import { createRipple, useGlow } from '../utils/effects';
@@ -78,12 +78,12 @@ const PayrollView: React.FC<PayrollViewProps> = ({ allLogs, workerGroups, worked
     };
 
     const formatTaskName = (taskId: number): React.ReactNode => {
-        const task = TASK_MAP.get(taskId);
+        const task = getTaskByIdWithFallback(taskId);
         if (!task) return 'Tâche inconnue';
 
         const { category, description } = task;
 
-        if (category === 'Opérations Diverses') {
+        if (category === 'Opérations Diverses' || category === 'À METTRE À JOUR') {
             return description;
         }
 
@@ -160,7 +160,6 @@ const PayrollView: React.FC<PayrollViewProps> = ({ allLogs, workerGroups, worked
             }
         });
 
-        // FIX: Explicitly type the map callback parameter 'workerId' as a number to resolve TS error.
         const processedData: PayrollData[] = Array.from(allRelevantWorkerIds).map((workerId: number) => {
             const worker = allWorkers.find(w => w.id === workerId);
             if (!worker) return null;
@@ -173,15 +172,14 @@ const PayrollView: React.FC<PayrollViewProps> = ({ allLogs, workerGroups, worked
     
             const tasksSummary = new Map<number, { quantity: number; price: number }>();
             regularLogs.forEach(log => {
-                const task = TASK_MAP.get(log.taskId);
-                if (!task) return;
+                const task = getTaskById(log.taskId);
+                if (!task) return; // Ignore outdated tasks in calculation
     
                 const existing = tasksSummary.get(log.taskId) || { quantity: 0, price: task.price };
                 existing.quantity += Number(log.quantity);
                 tasksSummary.set(log.taskId, existing);
             });
             
-            // FIX: Explicitly type the destructured map callback parameters to resolve TS error.
             const workerTasks: PayrollData['tasks'] = Array.from(tasksSummary.entries()).map(([taskId, summary]: [number, { quantity: number; price: number }]) => ({
                 taskId,
                 quantity: summary.quantity,
@@ -212,8 +210,8 @@ const PayrollView: React.FC<PayrollViewProps> = ({ allLogs, workerGroups, worked
     };
 
     const ReportContent: React.FC<{ data: PayrollData[], id: string }> = ({ data, id }) => {
-        const laitPricePerDay = TASK_MAP.get(LAIT_TASK_ID)?.price || 0;
-        const panierPricePerDay = TASK_MAP.get(PANIER_TASK_ID)?.price || 0;
+        const laitPricePerDay = getTaskById(LAIT_TASK_ID)?.price || 0;
+        const panierPricePerDay = getTaskById(PANIER_TASK_ID)?.price || 0;
         
         const grandTotals = useMemo(() => {
             const totals = {

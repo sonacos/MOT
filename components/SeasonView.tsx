@@ -1,6 +1,6 @@
 import React, { useMemo, useRef, useState, useCallback, useEffect } from 'react';
 import { DailyLog, Worker, WorkerGroup, WorkedDays } from '../types';
-import { TASK_MAP } from '../constants';
+import { getTaskByIdWithFallback } from '../constants';
 import { useGlow } from '../utils/effects';
 import { printElement, exportToExcel, exportToPDF } from '../utils/exportUtils';
 import ExportMenu from './ExportMenu';
@@ -170,12 +170,17 @@ const SeasonView: React.FC<SeasonViewProps> = ({ allLogs, workerGroups, workedDa
                                 <th scope="col" className="border-b-2 border-r border-slate-500 min-w-[160px] sticky left-0 bg-sonacos-slate-dark z-10 font-semibold px-4 py-3">Ouvrier</th>
                                 <th scope="col" className="border-b-2 border-r border-slate-500 text-center font-semibold min-w-[120px] px-2 py-3">Total Jours Travaillés</th>
                                 {headerTaskIds.map(taskId => {
-                                    const task = TASK_MAP.get(taskId);
-                                    if (!task) return null;
+                                    const task = getTaskByIdWithFallback(taskId);
                                     return (
                                         <th key={task.id} scope="col" className="border-b-2 border-r border-slate-500 text-center font-semibold min-w-[120px] px-2 py-3">
-                                            <div className="font-bold text-xs">{task.category}</div>
-                                            <div className="font-normal text-slate-300 mt-0.5 text-[10px]">{task.description}</div>
+                                            {task.category === 'Opérations Diverses' || task.category === 'À METTRE À JOUR' ? (
+                                                <div className="font-bold text-xs">{task.description}</div>
+                                            ) : (
+                                                <>
+                                                    <div className="font-bold text-xs">{task.category}</div>
+                                                    <div className="font-normal text-slate-300 mt-0.5 text-[10px]">{task.description}</div>
+                                                </>
+                                            )}
                                         </th>
                                     );
                                 })}

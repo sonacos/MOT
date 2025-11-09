@@ -16,10 +16,17 @@ export const TASK_GROUPS: TaskGroup[] = [
     ],
   },
   {
-    category: 'Conditionnement ou reconditionnement',
+    category: 'Conditionnement',
     tasks: [
-      { id: 10, description: 'Céréales et autres', unit: 'par quintal', price: 1.25 },
-      { id: 11, description: 'Avoine et tournesol', unit: 'par quintal', price: 1.55 },
+      { id: 48, description: 'Céréales et autres', unit: 'par quintal', price: 1.25 },
+      { id: 49, description: 'Avoine et tournesol', unit: 'par quintal', price: 1.55 },
+    ],
+  },
+  {
+    category: 'Reconditionnement',
+    tasks: [
+      { id: 50, description: 'Céréales et autres', unit: 'par quintal', price: 1.25 },
+      { id: 51, description: 'Avoine et tournesol', unit: 'par quintal', price: 1.55 },
     ],
   },
   {
@@ -31,13 +38,23 @@ export const TASK_GROUPS: TaskGroup[] = [
     ],
   },
   {
-    category: 'Mise en pile après conditionnement ou reconditionnement',
+    category: 'Mise en pile après conditionnement',
     tasks: [
-      { id: 15, description: 'Céréales et autres (100 kg)', unit: 'par quintal', price: 1.05 },
-      { id: 16, description: 'Céréales et autres (100 kg)/Tracteur ou chariot', unit: 'par quintal', price: 0.85 },
-      { id: 17, description: 'Céréales et autres (50 kg)', unit: 'par quintal', price: 1.35 },
-      { id: 18, description: 'Céréales et autres (50 kg)/Tracteur ou chariot', unit: 'par quintal', price: 0.95 },
-      { id: 19, description: 'Avoines et tournesol', unit: 'par quintal', price: 1.55 },
+      { id: 52, description: 'Céréales et autres (100 kg)', unit: 'par quintal', price: 1.05 },
+      { id: 53, description: 'Céréales et autres (100 kg) / Tracteur ou chariot', unit: 'par quintal', price: 0.85 },
+      { id: 54, description: 'Céréales et autres (50 kg)', unit: 'par quintal', price: 1.35 },
+      { id: 55, description: 'Céréales et autres (50 kg) / Tracteur ou chariot', unit: 'par quintal', price: 0.95 },
+      { id: 56, description: 'Avoines et tournesol', unit: 'par quintal', price: 1.55 },
+    ],
+  },
+    {
+    category: 'Mise en pile après reconditionnement',
+    tasks: [
+      { id: 57, description: 'Céréales et autres (100 kg)', unit: 'par quintal', price: 1.05 },
+      { id: 58, description: 'Céréales et autres (100 kg) / Tracteur ou chariot', unit: 'par quintal', price: 0.85 },
+      { id: 59, description: 'Céréales et autres (50 kg)', unit: 'par quintal', price: 1.35 },
+      { id: 60, description: 'Céréales et autres (50 kg) / Tracteur ou chariot', unit: 'par quintal', price: 0.95 },
+      { id: 61, description: 'Avoines et tournesol', unit: 'par quintal', price: 1.55 },
     ],
   },
   {
@@ -51,7 +68,7 @@ export const TASK_GROUPS: TaskGroup[] = [
     category: 'Mise en pile après traitement',
     tasks: [
       { id: 22, description: 'Céréales et autres (50 kg)', unit: 'par quintal', price: 1.10 },
-      { id: 23, description: 'Céréales et autres (50 kg)/Tracteur ou chariot', unit: 'par quintal', price: 0.90 },
+      { id: 23, description: 'Céréales et autres (50 kg) / Tracteur ou chariot', unit: 'par quintal', price: 0.90 },
       { id: 24, description: 'Avoine et tournesol', unit: 'par quintal', price: 1.40 },
     ],
   },
@@ -98,3 +115,25 @@ export const TASK_MAP = new Map<number, Task & { category: string }>();
 ALL_TASKS_WITH_CATEGORY.forEach(task => {
     TASK_MAP.set(task.id, task);
 });
+
+/**
+ * Retrieves a task by its ID. Returns undefined if not found.
+ * @param taskId The ID of the task to retrieve.
+ */
+export const getTaskById = (taskId: number): (Task & { category: string }) | undefined => {
+    return TASK_MAP.get(taskId);
+};
+
+/**
+ * Retrieves a task by its ID, providing a fallback placeholder for outdated/unknown IDs.
+ * @param taskId The ID of the task to retrieve.
+ */
+export const getTaskByIdWithFallback = (taskId: number): Task & { category: string } => {
+    return TASK_MAP.get(taskId) || {
+        id: taskId,
+        description: `Tâche obsolète (ID: ${taskId})`,
+        category: 'À METTRE À JOUR',
+        unit: 'N/A',
+        price: 0,
+    };
+};

@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { DailyLog, Worker, WorkerGroup, WorkedDays } from '../types';
-import { TASK_MAP } from '../constants';
+import { getTaskByIdWithFallback } from '../constants';
 import WorkerMultiSelect from './WorkerMultiSelect';
 import { playHoverSound } from '../utils/audioUtils';
 import { createRipple, useGlow } from '../utils/effects';
@@ -83,11 +83,17 @@ const ReportContent: React.FC<{
                                 <tr>
                                     <th className="text-left py-2 px-4 border border-slate-300">Ouvrier</th>
                                     {headerTaskIds.map(taskId => {
-                                        const task = TASK_MAP.get(taskId);
+                                        const task = getTaskByIdWithFallback(taskId);
                                         return (
                                             <th key={task.id} className="text-center py-2 px-1 border border-slate-300">
-                                                <div className="font-bold text-xs">{task.category}</div>
-                                                <div className="font-normal text-[10px]">{task.description}</div>
+                                                {task.category === 'Opérations Diverses' || task.category === 'À METTRE À JOUR' ? (
+                                                    <div className="font-bold text-xs">{task.description}</div>
+                                                ) : (
+                                                    <>
+                                                        <div className="font-bold text-xs">{task.category}</div>
+                                                        <div className="font-normal text-[10px]">{task.description}</div>
+                                                    </>
+                                                )}
                                             </th>
                                         );
                                     })}

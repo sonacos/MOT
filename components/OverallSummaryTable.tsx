@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { DailyLog, Worker } from '../types';
-import { TASK_MAP } from '../constants';
+import { getTaskByIdWithFallback } from '../constants';
 import { playHoverSound } from '../utils/audioUtils';
 
 interface OverallSummaryTableProps {
@@ -96,12 +96,17 @@ const OverallSummaryTable: React.FC<OverallSummaryTableProps> = ({ allLogs, work
                                 Ouvrier
                             </th>
                             {headerTaskIds.map(taskId => {
-                                const task = TASK_MAP.get(taskId);
-                                if (!task) return null;
+                                const task = getTaskByIdWithFallback(taskId);
                                 return (
                                      <th key={task.id} scope="col" className={`border-b-2 border-r border-slate-500 text-center font-semibold ${isCompact ? 'min-w-[70px] px-1 py-1.5' : 'min-w-[120px] px-2 py-3'}`}>
-                                        <div className={`font-bold ${isCompact ? 'text-[10px]' : 'text-xs'}`}>{task.category}</div>
-                                        <div className={`font-normal text-slate-300 mt-0.5 ${isCompact ? 'text-[8px]' : 'text-[10px]'}`}>{task.description}</div>
+                                        {task.category === 'Opérations Diverses' || task.category === 'À METTRE À JOUR' ? (
+                                            <div className={`font-bold ${isCompact ? 'text-[10px]' : 'text-xs'}`}>{task.description}</div>
+                                        ) : (
+                                            <>
+                                                <div className={`font-bold ${isCompact ? 'text-[10px]' : 'text-xs'}`}>{task.category}</div>
+                                                <div className={`font-normal text-slate-300 mt-0.5 ${isCompact ? 'text-[8px]' : 'text-[10px]'}`}>{task.description}</div>
+                                            </>
+                                        )}
                                     </th>
                                 );
                             })}

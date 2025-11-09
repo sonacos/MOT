@@ -1,7 +1,9 @@
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { DailyLog, Worker, User } from '../types';
-import { TASK_MAP } from '../constants';
+import { getTaskById, getTaskByIdWithFallback, TASK_GROUPS } from '../constants';
 import { playHoverSound, playClickSound } from '../utils/audioUtils';
+import Modal from './Modal';
+import SearchableSelect from './SearchableSelect';
 
 interface DailySummaryTableProps {
     logs: DailyLog[];
@@ -15,12 +17,62 @@ interface DailySummaryTableProps {
     requestConfirmation: (title: string, message: string | React.ReactNode, onConfirm: () => void) => void;
 }
 
+const taskOptions = TASK_GROUPS.map(group => ({
+    label: group.category,
+    options: group.tasks.map(task => ({
+        label: task.description,
+        value: task.id,
+        category: group.category
+    }))
+}));
+
 const DailySummaryTable: React.FC<DailySummaryTableProps> = ({ logs, workers, date, addLog, deleteLog, isDayFinalized, isCompact, currentUser, requestConfirmation }) => {
     
     const [draftQuantities, setDraftQuantities] = useState<Record<string, string>>({});
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const [showLeftShadow, setShowLeftShadow] = useState(false);
     const [showRightShadow, setShowRightShadow] = useState(false);
+
+    const [isResolveModalOpen, setResolveModalOpen] = useState(false);
+    const [resolvingLogs, setResolvingLogs] = useState<DailyLog[]>([]);
+    const [newTaskId, setNewTaskId] = useState<number | null>(null);
+
+    const openResolveModal = (logs: DailyLog[]) => {
+        if (isDayFinalized || logs.length === 0) return;
+        playClickSound();
+        setResolvingLogs(logs);
+        setNewTaskId(null);
+        setResolveModalOpen(true);
+    };
+
+    const closeResolveModal = () => {
+        setResolveModalOpen(false);
+        setResolvingLogs([]);
+        setNewTaskId(null);
+    };
+
+    const handleResolve = () => {
+        if (!newTaskId || resolvingLogs.length === 0) return;
+
+        const totalQuantity = resolvingLogs.reduce((sum, log) => sum + log.quantity, 0);
+        const workerId = resolvingLogs[0].workerId;
+        const date = resolvingLogs[0].date;
+        const observation = resolvingLogs.map(l => l.observation).filter(Boolean).join('; ');
+
+        // Delete old logs
+        resolvingLogs.forEach(log => deleteLog(log.id, log.owner));
+
+        // Add new log
+        addLog({
+            date,
+            workerId,
+            taskId: newTaskId,
+            quantity: totalQuantity,
+            observation: `(Corrigé) ${observation}`.trim()
+        });
+
+        closeResolveModal();
+    };
 
     const { headerTaskIds, dataMap, columnTotals } = useMemo(() => {
         const uniqueTaskIdsInLogs = [...new Set(logs.map(log => Number(log.taskId)))];
@@ -43,8 +95,10 @@ const DailySummaryTable: React.FC<DailySummaryTableProps> = ({ logs, workers, da
                 workerMap.set(taskId, []);
             }
             workerMap.get(taskId)!.push(log);
-
-            totals.set(taskId, (totals.get(taskId) || 0) + quantity);
+            
+            if (getTaskById(taskId)) { // Only sum valid tasks for totals
+                totals.set(taskId, (totals.get(taskId) || 0) + quantity);
+            }
         }
         
         return { headerTaskIds: sortedTaskIds, dataMap, columnTotals: totals };
@@ -136,7 +190,7 @@ const DailySummaryTable: React.FC<DailySummaryTableProps> = ({ logs, workers, da
     const handleDeleteCell = (workerId: number, taskId: number) => {
         if (isDayFinalized) return;
         const workerName = workers.find(w => w.id === workerId)?.name;
-        const taskName = TASK_MAP.get(taskId)?.description;
+        const taskName = getTaskById(taskId)?.description;
         
         const existingLogs = dataMap.get(workerId)?.get(taskId) || [];
         if (existingLogs.length === 0) return;
@@ -157,11 +211,7 @@ const DailySummaryTable: React.FC<DailySummaryTableProps> = ({ logs, workers, da
         return <p className="text-center py-8 text-slate-500">Aucune opération enregistrée pour cette date. Utilisez le formulaire ci-dessus pour commencer.</p>
     }
     
-    // The `workers` prop is already filtered by owner in App.tsx.
-    // The previous filter here was incorrect because the Worker object doesn't have an `owner` property,
-    // causing rows not to show up for non-superadmin users.
     const workersToShow = workers.filter(w => {
-        // Only show workers that have logs for the current day, or keep all if user is superadmin
         if (currentUser.role === 'superadmin') return true;
         return dataMap.has(w.id);
     });
@@ -176,12 +226,17 @@ const DailySummaryTable: React.FC<DailySummaryTableProps> = ({ logs, workers, da
                                 Ouvrier
                             </th>
                             {headerTaskIds.map(taskId => {
-                                const task = TASK_MAP.get(taskId);
-                                if (!task) return null;
+                                const task = getTaskByIdWithFallback(taskId);
                                 return (
                                     <th key={task.id} scope="col" className={`border-b-2 border-r border-slate-500 text-center font-semibold ${isCompact ? 'min-w-[70px] px-1 py-1.5' : 'min-w-[120px] px-2 py-3'}`}>
-                                        <div className={`font-bold ${isCompact ? 'text-[10px]' : 'text-xs'}`}>{task.category}</div>
-                                        <div className={`font-normal text-slate-300 mt-0.5 ${isCompact ? 'text-[8px]' : 'text-[10px]'}`}>{task.description}</div>
+                                        {task.category === 'Opérations Diverses' || task.category === 'À METTRE À JOUR' ? (
+                                            <div className={`font-bold ${isCompact ? 'text-[10px]' : 'text-xs'}`}>{task.description}</div>
+                                        ) : (
+                                            <>
+                                                <div className={`font-bold ${isCompact ? 'text-[10px]' : 'text-xs'}`}>{task.category}</div>
+                                                <div className={`font-normal text-slate-300 mt-0.5 ${isCompact ? 'text-[8px]' : 'text-[10px]'}`}>{task.description}</div>
+                                            </>
+                                        )}
                                     </th>
                                 );
                             })}
@@ -196,8 +251,31 @@ const DailySummaryTable: React.FC<DailySummaryTableProps> = ({ logs, workers, da
                                         {worker.name}
                                     </td>
                                     {headerTaskIds.map(taskId => {
+                                        const isOutdated = !getTaskById(taskId);
                                         const key = `${worker.id}-${taskId}`;
+                                        const logsForCell = dataMap.get(worker.id)?.get(taskId) || [];
+                                        const quantity = logsForCell.reduce((sum, log) => sum + Number(log.quantity), 0);
                                         const hasValue = draftQuantities[key] && parseFloat(draftQuantities[key]) > 0;
+
+                                        if (isOutdated) {
+                                            if (quantity > 0) {
+                                                return (
+                                                    <td key={taskId} className="p-1 text-center border-r border-slate-200 bg-red-100/70">
+                                                        <button 
+                                                            onClick={() => openResolveModal(logsForCell)}
+                                                            disabled={isDayFinalized}
+                                                            className="w-full h-full text-xs font-bold text-red-800 hover:bg-red-200 p-2 rounded-sm disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:text-slate-500"
+                                                            title="Cette tâche est obsolète et doit être mise à jour."
+                                                        >
+                                                            {quantity.toFixed(2)} &ndash; RÉPARER
+                                                        </button>
+                                                    </td>
+                                                );
+                                            } else {
+                                                return <td key={taskId} className="p-0 border-r border-slate-200"></td>;
+                                            }
+                                        }
+
                                         return (
                                             <td key={taskId} className="p-0 text-center font-medium border-r border-slate-200 transition-colors duration-150 relative group">
                                                 <input 
@@ -246,6 +324,24 @@ const DailySummaryTable: React.FC<DailySummaryTableProps> = ({ logs, workers, da
             </div>
             <div aria-hidden="true" className={`absolute top-0 bottom-0 left-0 w-8 bg-gradient-to-r from-slate-200 via-slate-200/70 to-transparent pointer-events-none transition-opacity duration-300 ${showLeftShadow ? 'opacity-100' : 'opacity-0'}`}></div>
             <div aria-hidden="true" className={`absolute top-0 bottom-0 right-0 w-8 bg-gradient-to-l from-slate-200 via-slate-200/70 to-transparent pointer-events-none transition-opacity duration-300 ${showRightShadow ? 'opacity-100' : 'opacity-0'}`}></div>
+
+            <Modal isOpen={isResolveModalOpen} onClose={closeResolveModal} title="Corriger une Tâche Obsolète">
+                <div className="space-y-4">
+                    <p className="text-sm text-slate-600">
+                        L'entrée de <strong>{resolvingLogs.length > 0 ? workers.find(w => w.id === resolvingLogs[0].workerId)?.name : ''}</strong>
+                        {' '}avec une quantité totale de <strong>{resolvingLogs.reduce((s, l) => s + l.quantity, 0).toFixed(2)}</strong> est associée à une tâche qui n'existe plus.
+                        Veuillez sélectionner la nouvelle tâche correcte dans la liste ci-dessous.
+                    </p>
+                    <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1.5">Nouvelle Tâche</label>
+                        <SearchableSelect options={taskOptions} value={newTaskId} onChange={setNewTaskId} placeholder="Sélectionner une nouvelle tâche" />
+                    </div>
+                    <div className="flex justify-end gap-3 pt-4">
+                        <button type="button" onClick={closeResolveModal} className="px-4 py-2 bg-slate-200 text-slate-800 font-semibold rounded-lg hover:bg-slate-300">Annuler</button>
+                        <button type="button" onClick={handleResolve} disabled={!newTaskId} className="px-4 py-2 bg-sonacos-green text-white font-semibold rounded-lg hover:bg-green-800 disabled:bg-slate-400">Enregistrer la Correction</button>
+                    </div>
+                </div>
+            </Modal>
         </div>
     );
 };
