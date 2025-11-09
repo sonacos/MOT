@@ -107,6 +107,22 @@ export interface AnnualSummaryData {
     isHNS: boolean;
 }
 
+export interface DetailedPayrollData {
+    worker: Worker;
+    montant: number;
+    anciennete: number;
+    total: number;
+    indemLait: number;
+    primePanier: number;
+    retCnss: number;
+    retAmo: number;
+    avanceAid: number;
+    ir: number;
+    netAPayer: number;
+    joursTravailles: number;
+    congePaye: number;
+    jourFerier: number;
+}
 
 // --- Saved Report Firestore Document Structures ---
 
@@ -160,4 +176,16 @@ export interface SavedAnnualSummary extends SavedReport {
         year: number;
     };
     data: AnnualSummaryData[];
+}
+
+export interface SavedDetailedPayroll extends SavedReport {
+    params: {
+        year: number;
+        month: number;
+        period: 'first' | 'second';
+        regionalCenter: string;
+        workerIds: number[];
+        additionalInputs: Record<number, { avanceAid: string; ir: string }>;
+    };
+    data: DetailedPayrollData[];
 }

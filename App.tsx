@@ -2,9 +2,13 @@
 
 
 
+
+
+
+
 import React, { useState, useCallback, useEffect } from 'react';
 import ReactDOM from 'react-dom';
-import { DailyLog, WorkerGroup, Worker, WorkedDays, User, UserRole, Task, TaskGroup, SavedFinalReport, SavedPayroll, SavedTransferOrder, SavedAnnualSummary, PayrollData, TransferOrderData } from './types';
+import { DailyLog, WorkerGroup, Worker, WorkedDays, User, UserRole, Task, TaskGroup, SavedFinalReport, SavedPayroll, SavedTransferOrder, SavedAnnualSummary, PayrollData, TransferOrderData, SavedDetailedPayroll } from './types';
 import Sidebar from './components/Sidebar';
 import TopBar from './components/TopBar';
 import DailyEntryView from './components/DailyEntryView';
@@ -17,6 +21,7 @@ import AnnualSummaryView from './components/AnnualSummaryView';
 import LoginView from './components/LoginView';
 import ConfirmationModal from './components/ConfirmationModal';
 import TariffManagementView from './components/TariffManagementView';
+import DetailedPayrollView from './components/DetailedPayrollView';
 import { unlockAudio } from './utils/audioUtils';
 import { auth, db } from './firebaseConfig';
 import { onAuthStateChanged, signOut } from "firebase/auth";
@@ -41,7 +46,7 @@ import {
 import { INITIAL_TASK_GROUPS } from './constants';
 
 const DEPARTED_GROUP_ID = 9999;
-const reportCollections = ['finalReports', 'payrolls', 'transferOrders', 'annualSummaries'];
+const reportCollections = ['finalReports', 'payrolls', 'transferOrders', 'annualSummaries', 'detailedPayrolls'];
 const LAIT_TASK_ID = 37;
 const PANIER_TASK_ID = 47;
 
@@ -57,7 +62,7 @@ const createTaskMap = (taskGroups: TaskGroup[]): Map<number, Task & { category: 
 };
 
 const App: React.FC = () => {
-    type View = 'entry' | 'management' | 'payroll' | 'transferOrder' | 'userManagement' | 'season' | 'finalReport' | 'annualSummary' | 'tariffManagement';
+    type View = 'entry' | 'management' | 'payroll' | 'transferOrder' | 'userManagement' | 'season' | 'finalReport' | 'annualSummary' | 'tariffManagement' | 'detailedPayroll';
     const [currentView, setCurrentView] = useState<View>('entry');
     const [isAnimatingOut, setIsAnimatingOut] = useState(false);
     const [entryDate, setEntryDate] = useState(new Date().toISOString().split('T')[0]);
@@ -77,6 +82,7 @@ const App: React.FC = () => {
     const [savedPayrolls, setSavedPayrolls] = useState<SavedPayroll[]>([]);
     const [savedTransferOrders, setSavedTransferOrders] = useState<SavedTransferOrder[]>([]);
     const [savedAnnualSummaries, setSavedAnnualSummaries] = useState<SavedAnnualSummary[]>([]);
+    const [savedDetailedPayrolls, setSavedDetailedPayrolls] = useState<SavedDetailedPayroll[]>([]);
     
     // Auth and loading states
     const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -141,6 +147,7 @@ const App: React.FC = () => {
                 payrolls: (data: any) => setSavedPayrolls(data as SavedPayroll[]),
                 transferOrders: (data: any) => setSavedTransferOrders(data as SavedTransferOrder[]),
                 annualSummaries: (data: any) => setSavedAnnualSummaries(data as SavedAnnualSummary[]),
+                detailedPayrolls: (data: any) => setSavedDetailedPayrolls(data as SavedDetailedPayroll[]),
             };
 
 
@@ -335,6 +342,7 @@ const App: React.FC = () => {
                  if (collectionName === 'payrolls') setSavedPayrolls(prev => [...prev, { ...data, id: docRef.id } as unknown as SavedPayroll]);
                  if (collectionName === 'transferOrders') setSavedTransferOrders(prev => [...prev, { ...data, id: docRef.id } as unknown as SavedTransferOrder]);
                  if (collectionName === 'annualSummaries') setSavedAnnualSummaries(prev => [...prev, { ...data, id: docRef.id } as unknown as SavedAnnualSummary]);
+                 if (collectionName === 'detailedPayrolls') setSavedDetailedPayrolls(prev => [...prev, { ...data, id: docRef.id } as unknown as SavedDetailedPayroll]);
             }
         } else {
             const docRef = doc(db, 'users', ownerId, collectionName, reportToSave.id!);
@@ -347,6 +355,7 @@ const App: React.FC = () => {
                  if (collectionName === 'payrolls') setSavedPayrolls(prev => prev.map(r => r.id === data.id ? data as unknown as SavedPayroll : r));
                  if (collectionName === 'transferOrders') setSavedTransferOrders(prev => prev.map(r => r.id === data.id ? data as unknown as SavedTransferOrder : r));
                  if (collectionName === 'annualSummaries') setSavedAnnualSummaries(prev => prev.map(r => r.id === data.id ? data as unknown as SavedAnnualSummary : r));
+                 if (collectionName === 'detailedPayrolls') setSavedDetailedPayrolls(prev => prev.map(r => r.id === data.id ? data as unknown as SavedDetailedPayroll : r));
             }
         }
         // Always do a full refresh for superadmin or if it's simpler
@@ -371,6 +380,9 @@ const App: React.FC = () => {
     const handleDeleteTransferOrder = createDeleteHandler<SavedTransferOrder>('transferOrders');
     const handleSaveAnnualSummary = createSaveHandler<Partial<SavedAnnualSummary>>('annualSummaries');
     const handleDeleteAnnualSummary = createDeleteHandler<SavedAnnualSummary>('annualSummaries');
+    const handleSaveDetailedPayroll = createSaveHandler<Partial<SavedDetailedPayroll>>('detailedPayrolls');
+    const handleDeleteDetailedPayroll = createDeleteHandler<SavedDetailedPayroll>('detailedPayrolls');
+
 
     // --- Retroactive Generation ---
     const handleRetroactiveGeneration = async () => {
@@ -852,7 +864,7 @@ const App: React.FC = () => {
                 if(type === 'transferOrder') orientation = 'portrait';
                 
                 switch (format) {
-                    case 'print': printElement(elementId, type, orientation); break;
+                    case 'print': printElement(elementId, orientation); break;
                     case 'pdf': exportToPDF(elementId, fileName, orientation); break;
                     case 'excel': exportToExcel(elementId, fileName); break;
                 }
@@ -866,78 +878,31 @@ const App: React.FC = () => {
         const { report, type } = exportRequest;
         const noOp = () => {};
     
-        // This function ensures that the report component, when rendered for export,
-        // receives the exact same set of props it would in a normal interactive render.
-        // This prevents subtle bugs caused by missing props or different data contexts.
         switch (type) {
             case 'finalReport':
                 return <FinalReportView
-                    {...{
-                        allLogs: logs,
-                        workerGroups: workerGroups,
-                        workedDays: workedDays,
-                        taskMap: taskMap,
-                        savedReports: savedFinalReports,
-                        onSave: handleSaveFinalReport,
-                        onSavePayroll: handleSavePayroll,
-                        onSaveTransferOrder: handleSaveTransferOrder,
-                        onDelete: handleDeleteFinalReport,
-                        onSaveWorkedDays: saveWorkedDays,
-                        requestConfirmation: requestConfirmation,
-                        currentUser: currentUser,
-                        onDirectExport: noOp,
-                    }}
-                    isPrinting
-                    viewingReport={report}
+                    {...{ allLogs: logs, workerGroups: workerGroups, workedDays: workedDays, taskMap: taskMap, savedReports: savedFinalReports, onSave: handleSaveFinalReport, onSavePayroll: handleSavePayroll, onSaveTransferOrder: handleSaveTransferOrder, onDelete: handleDeleteFinalReport, onSaveWorkedDays: saveWorkedDays, requestConfirmation: requestConfirmation, currentUser: currentUser, onDirectExport: noOp, }}
+                    isPrinting viewingReport={report}
                 />;
             case 'payroll':
                 return <PayrollView
-                     {...{
-                        workerGroups: workerGroups,
-                        taskMap: taskMap,
-                        savedReports: savedPayrolls,
-                        onSave: handleSavePayroll,
-                        onDelete: handleDeletePayroll,
-                        requestConfirmation: requestConfirmation,
-                        currentUser: currentUser,
-                        onDirectExport: noOp,
-                        onRetroactiveGenerate: handleRetroactiveGeneration,
-                    }}
-                    isPrinting
-                    viewingReport={report}
+                     {...{ workerGroups: workerGroups, taskMap: taskMap, savedReports: savedPayrolls, onSave: handleSavePayroll, onDelete: handleDeletePayroll, requestConfirmation: requestConfirmation, currentUser: currentUser, onDirectExport: noOp, onRetroactiveGenerate: handleRetroactiveGeneration, }}
+                    isPrinting viewingReport={report}
                 />;
             case 'transferOrder':
                 return <TransferOrderView
-                     {...{
-                        workerGroups: workerGroups,
-                        taskMap: taskMap,
-                        savedReports: savedTransferOrders,
-                        onSave: handleSaveTransferOrder,
-                        onDelete: handleDeleteTransferOrder,
-                        requestConfirmation: requestConfirmation,
-                        currentUser: currentUser,
-                        onDirectExport: noOp,
-                    }}
-                    isPrinting
-                    viewingReport={report}
+                     {...{ workerGroups: workerGroups, taskMap: taskMap, savedReports: savedTransferOrders, onSave: handleSaveTransferOrder, onDelete: handleDeleteTransferOrder, requestConfirmation: requestConfirmation, currentUser: currentUser, onDirectExport: noOp, }}
+                    isPrinting viewingReport={report}
                 />;
             case 'annualSummary':
                  return <AnnualSummaryView
-                     {...{
-                        allLogs: logs,
-                        workerGroups: workerGroups,
-                        workedDays: workedDays,
-                        taskMap: taskMap,
-                        savedReports: savedAnnualSummaries,
-                        savedFinalReports: savedFinalReports,
-                        onSave: handleSaveAnnualSummary,
-                        onDelete: handleDeleteAnnualSummary,
-                        requestConfirmation: requestConfirmation,
-                        currentUser: currentUser,
-                        onDirectExport: noOp,
-                    }}
-                    isPrinting
-                    viewingReport={report}
+                     {...{ allLogs: logs, workerGroups: workerGroups, workedDays: workedDays, taskMap: taskMap, savedReports: savedAnnualSummaries, savedFinalReports: savedFinalReports, onSave: handleSaveAnnualSummary, onDelete: handleDeleteAnnualSummary, requestConfirmation: requestConfirmation, currentUser: currentUser, onDirectExport: noOp, }}
+                    isPrinting viewingReport={report}
+                />;
+             case 'detailedPayroll':
+                 return <DetailedPayrollView
+                     {...{ allLogs: logs, workerGroups: workerGroups, workedDays: workedDays, taskMap: taskMap, savedReports: savedDetailedPayrolls, onSave: handleSaveDetailedPayroll, onDelete: handleDeleteDetailedPayroll, requestConfirmation: requestConfirmation, currentUser: currentUser, onDirectExport: noOp, }}
+                    isPrinting viewingReport={report}
                 />;
             default:
                 return null;
@@ -949,6 +914,7 @@ const App: React.FC = () => {
         finalReport: 'État Bi-mensuel Final',
         management: 'Gestion des Ouvriers & Groupes',
         payroll: 'Décompte des Rémunérations',
+        detailedPayroll: 'Paie Détaillée Officielle',
         transferOrder: 'Ordre de Virement Bancaire',
         userManagement: 'Gestion des Utilisateurs',
         season: 'Cumul de la Saison',
@@ -984,6 +950,7 @@ const App: React.FC = () => {
     const userSavedPayrolls = currentUser.role === 'superadmin' ? savedPayrolls : savedPayrolls.filter(r => r.owner === currentUser.uid);
     const userSavedTransferOrders = currentUser.role === 'superadmin' ? savedTransferOrders : savedTransferOrders.filter(r => r.owner === currentUser.uid);
     const userSavedAnnualSummaries = currentUser.role === 'superadmin' ? savedAnnualSummaries : savedAnnualSummaries.filter(r => r.owner === currentUser.uid);
+    const userSavedDetailedPayrolls = currentUser.role === 'superadmin' ? savedDetailedPayrolls : savedDetailedPayrolls.filter(r => r.owner === currentUser.uid);
 
     return (
         <div className="min-h-screen font-sans flex">
@@ -1005,78 +972,21 @@ const App: React.FC = () => {
                     <div className={`transition-opacity duration-150 ${isAnimatingOut ? 'opacity-0' : 'opacity-100'}`}>
                         <div className="print:hidden">
                             {currentView === 'entry' && <DailyEntryView logs={userLogs} addLog={addLog} deleteLog={deleteLog} finalizedDates={finalizedDates} onToggleFinalize={toggleFinalizeDate} workerGroups={userWorkerGroups} entryDate={entryDate} setEntryDate={setEntryDate} currentUser={currentUser} deleteLogsByDate={deleteLogsByDate} requestConfirmation={requestConfirmation} taskGroups={taskGroups} taskMap={taskMap} />}
-                            {currentView === 'finalReport' && <FinalReportView 
-                                allLogs={logs} 
-                                workerGroups={workerGroups} 
-                                workedDays={workedDays} 
-                                onSaveWorkedDays={saveWorkedDays} 
-                                taskMap={taskMap} 
-                                savedReports={userSavedFinalReports} 
-                                onSave={handleSaveFinalReport} 
-                                onSavePayroll={handleSavePayroll}
-                                onSaveTransferOrder={handleSaveTransferOrder}
-                                onDelete={handleDeleteFinalReport} 
-                                requestConfirmation={requestConfirmation} 
-                                currentUser={currentUser} 
-                                onDirectExport={(report, format) => handleDirectExport(report, 'finalReport', format)} 
-                            />}
-                            {currentView === 'payroll' && <PayrollView 
-                                workerGroups={workerGroups} 
-                                taskMap={taskMap} 
-                                savedReports={userSavedPayrolls} 
-                                onSave={handleSavePayroll}
-                                onDelete={handleDeletePayroll} 
-                                requestConfirmation={requestConfirmation} 
-                                currentUser={currentUser} 
-                                onDirectExport={(report, format) => handleDirectExport(report, 'payroll', format)}
-                                viewingReport={exportRequest?.type === 'payroll' ? exportRequest.report : null}
-                                onRetroactiveGenerate={handleRetroactiveGeneration}
-                            />}
-                            {currentView === 'transferOrder' && <TransferOrderView 
-                                workerGroups={workerGroups} 
-                                taskMap={taskMap} 
-                                savedReports={userSavedTransferOrders} 
-                                onSave={handleSaveTransferOrder}
-                                onDelete={handleDeleteTransferOrder} 
-                                requestConfirmation={requestConfirmation} 
-                                currentUser={currentUser} 
-                                onDirectExport={(report, format) => handleDirectExport(report, 'transferOrder', format)}
-                                viewingReport={exportRequest?.type === 'transferOrder' ? exportRequest.report : null}
-                            />}
+                            {currentView === 'finalReport' && <FinalReportView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} onSaveWorkedDays={saveWorkedDays} taskMap={taskMap} savedReports={userSavedFinalReports} onSave={handleSaveFinalReport} onSavePayroll={handleSavePayroll} onSaveTransferOrder={handleSaveTransferOrder} onDelete={handleDeleteFinalReport} requestConfirmation={requestConfirmation} currentUser={currentUser} onDirectExport={(report, format) => handleDirectExport(report, 'finalReport', format)} />}
+                            {currentView === 'payroll' && <PayrollView workerGroups={workerGroups} taskMap={taskMap} savedReports={userSavedPayrolls} onSave={handleSavePayroll} onDelete={handleDeletePayroll} requestConfirmation={requestConfirmation} currentUser={currentUser} onDirectExport={(report, format) => handleDirectExport(report, 'payroll', format)} viewingReport={exportRequest?.type === 'payroll' ? exportRequest.report : null} onRetroactiveGenerate={handleRetroactiveGeneration} />}
+                            {currentView === 'detailedPayroll' && <DetailedPayrollView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} onSaveWorkedDays={saveWorkedDays} taskMap={taskMap} savedReports={userSavedDetailedPayrolls} onSave={handleSaveDetailedPayroll} onDelete={handleDeleteDetailedPayroll} requestConfirmation={requestConfirmation} currentUser={currentUser} onDirectExport={(report, format) => handleDirectExport(report, 'detailedPayroll', format)} />}
+                            {currentView === 'transferOrder' && <TransferOrderView workerGroups={workerGroups} taskMap={taskMap} savedReports={userSavedTransferOrders} onSave={handleSaveTransferOrder} onDelete={handleDeleteTransferOrder} requestConfirmation={requestConfirmation} currentUser={currentUser} onDirectExport={(report, format) => handleDirectExport(report, 'transferOrder', format)} viewingReport={exportRequest?.type === 'transferOrder' ? exportRequest.report : null} />}
                             {currentView === 'season' && <SeasonView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} taskMap={taskMap} />}
                             {currentView === 'annualSummary' && <AnnualSummaryView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} taskMap={taskMap} savedReports={userSavedAnnualSummaries} onSave={handleSaveAnnualSummary} onDelete={handleDeleteAnnualSummary} requestConfirmation={requestConfirmation} currentUser={currentUser} savedFinalReports={userSavedFinalReports} onDirectExport={(report, format) => handleDirectExport(report, 'annualSummary', format)} />}
-                            {currentView === 'management' && (
-                                <ManagementView 
-                                    workerGroups={userWorkerGroups} onAddGroup={addGroup} onEditGroup={editGroup} onArchiveGroup={archiveGroup}
-                                    onAddWorker={addWorker} onEditWorker={editWorker} 
-                                    onArchiveWorker={archiveWorker} onDeleteWorkerPermanently={deleteWorkerPermanently}
-                                    onMoveWorker={moveWorker}
-                                    onDeleteGroupPermanently={deleteGroupPermanently}
-                                    currentUser={currentUser}
-                                    requestConfirmation={requestConfirmation}
-                                />
-                            )}
-                            {currentView === 'userManagement' && currentUser.role === 'superadmin' && (
-                                <UserManagementView 
-                                    users={users} 
-                                    onFetchUsers={() => fetchData(currentUser)} 
-                                    currentUser={currentUser}
-                                    onDeleteUserOnly={deleteUserOnly}
-                                    onDeleteUserAndData={deleteUserAndData}
-                                />
-                            )}
-                             {currentView === 'tariffManagement' && currentUser.role === 'superadmin' && (
-                                <TariffManagementView
-                                    taskGroups={taskGroups}
-                                    onUpdateTask={handleUpdateTask}
-                                    onAddTask={handleAddTask}
-                                    requestConfirmation={requestConfirmation}
-                                />
-                            )}
+                            {currentView === 'management' && (<ManagementView workerGroups={userWorkerGroups} onAddGroup={addGroup} onEditGroup={editGroup} onArchiveGroup={archiveGroup} onAddWorker={addWorker} onEditWorker={editWorker} onArchiveWorker={archiveWorker} onDeleteWorkerPermanently={deleteWorkerPermanently} onMoveWorker={moveWorker} onDeleteGroupPermanently={deleteGroupPermanently} currentUser={currentUser} requestConfirmation={requestConfirmation} />)}
+                            {currentView === 'userManagement' && currentUser.role === 'superadmin' && (<UserManagementView users={users} onFetchUsers={() => fetchData(currentUser)} currentUser={currentUser} onDeleteUserOnly={deleteUserOnly} onDeleteUserAndData={deleteUserAndData} />)}
+                             {/* FIX: Corrected typo `onAddTask={onAddTask}` to `onAddTask={handleAddTask}` to pass the correct handler function. */}
+                             {currentView === 'tariffManagement' && currentUser.role === 'superadmin' && (<TariffManagementView taskGroups={taskGroups} onUpdateTask={handleUpdateTask} onAddTask={handleAddTask} requestConfirmation={requestConfirmation} />)}
                         </div>
                         <div className="hidden print:block">
                             {currentView === 'finalReport' && <FinalReportView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} onSaveWorkedDays={saveWorkedDays} isPrinting taskMap={taskMap} savedReports={userSavedFinalReports} onSave={handleSaveFinalReport} onDelete={handleDeleteFinalReport} requestConfirmation={requestConfirmation} currentUser={currentUser} onDirectExport={(report, format) => handleDirectExport(report, 'finalReport', format)} onSavePayroll={handleSavePayroll} onSaveTransferOrder={handleSaveTransferOrder} />}
                             {currentView === 'payroll' && <PayrollView workerGroups={workerGroups} isPrinting taskMap={taskMap} savedReports={userSavedPayrolls} onSave={handleSavePayroll} onDelete={handleDeletePayroll} requestConfirmation={requestConfirmation} currentUser={currentUser} onDirectExport={(report, format) => handleDirectExport(report, 'payroll', format)} onRetroactiveGenerate={handleRetroactiveGeneration} />}
+                            {currentView === 'detailedPayroll' && <DetailedPayrollView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} onSaveWorkedDays={saveWorkedDays} isPrinting taskMap={taskMap} savedReports={userSavedDetailedPayrolls} onSave={handleSaveDetailedPayroll} onDelete={handleDeleteDetailedPayroll} requestConfirmation={requestConfirmation} currentUser={currentUser} onDirectExport={(report, format) => handleDirectExport(report, 'detailedPayroll', format)} />}
                             {currentView === 'transferOrder' && <TransferOrderView workerGroups={workerGroups} isPrinting taskMap={taskMap} savedReports={userSavedTransferOrders} onSave={handleSaveTransferOrder} onDelete={handleDeleteTransferOrder} requestConfirmation={requestConfirmation} currentUser={currentUser} onDirectExport={(report, format) => handleDirectExport(report, 'transferOrder', format)} />}
                             {currentView === 'season' && <SeasonView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} isPrinting taskMap={taskMap} />}
                             {currentView === 'annualSummary' && <AnnualSummaryView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} isPrinting taskMap={taskMap} savedReports={userSavedAnnualSummaries} onSave={handleSaveAnnualSummary} onDelete={handleDeleteAnnualSummary} requestConfirmation={requestConfirmation} currentUser={currentUser} savedFinalReports={userSavedFinalReports} onDirectExport={(report, format) => handleDirectExport(report, 'annualSummary', format)} />}
