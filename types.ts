@@ -60,3 +60,96 @@ export interface User {
   email: string;
   role: UserRole;
 }
+
+// --- Data Payloads for Saved Reports ---
+
+export interface FinalReportData {
+  workers: Worker[];
+  logs: DailyLog[];
+  allWorkedDays: WorkedDays[];
+  startDate: string;
+  endDate: string;
+}
+
+export interface PayrollData {
+    worker: Worker;
+    tasks: {
+        taskId: number;
+        quantity: number;
+        price: number;
+        amount: number;
+    }[];
+    totalOperation: number;
+    anciennete: number;
+    totalBrut: number;
+    retenu: number;
+    joursTravailles: number;
+}
+
+export interface TransferOrderData {
+    worker: Worker;
+    netPay: number;
+}
+
+export interface AnnualSummaryData {
+    worker: Worker;
+    totalOperation: number;
+    anciennete: number;
+    totalBrut: number;
+    retenu: number;
+    joursTravailles: number;
+    indemnites: number;
+    netPay: number;
+}
+
+
+// --- Saved Report Firestore Document Structures ---
+
+export interface SavedReport {
+    id: string;
+    owner: string;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface SavedFinalReport extends SavedReport {
+  params: {
+    year: number;
+    month: number;
+    period: 'first' | 'second';
+    regionalCenter: string;
+    workerIds: number[];
+  };
+  data: FinalReportData;
+}
+
+export interface SavedPayroll extends SavedReport {
+    params: {
+        startDate: string;
+        endDate: string;
+        anneeScolaire: string;
+        anneeRegle: string;
+        centreRegional: string;
+        workerIds: number[];
+        additionalInputs: Record<number, { avance: string }>;
+    };
+    data: PayrollData[];
+}
+
+export interface SavedTransferOrder extends SavedReport {
+    params: {
+        city: string;
+        orderDate: string;
+        startDate: string;
+        endDate: string;
+        workerIds: number[];
+    };
+    data: TransferOrderData[];
+}
+
+export interface SavedAnnualSummary extends SavedReport {
+    params: {
+        year: number;
+    };
+    data: AnnualSummaryData[];
+}

@@ -1,5 +1,6 @@
+
 import React, { useState, useCallback, useEffect } from 'react';
-import { DailyLog, WorkerGroup, Worker, WorkedDays, User, UserRole, Task, TaskGroup } from './types';
+import { DailyLog, WorkerGroup, Worker, WorkedDays, User, UserRole, Task, TaskGroup, SavedFinalReport, SavedPayroll, SavedTransferOrder, SavedAnnualSummary } from './types';
 import Sidebar from './components/Sidebar';
 import TopBar from './components/TopBar';
 import DailyEntryView from './components/DailyEntryView';
@@ -30,6 +31,7 @@ import {
     limit,
     collectionGroup,
     where,
+    orderBy,
 } from 'firebase/firestore';
 import { INITIAL_TASK_GROUPS } from './constants';
 
@@ -61,6 +63,12 @@ const App: React.FC = () => {
     const [taskGroups, setTaskGroups] = useState<TaskGroup[]>([]);
     const [taskMap, setTaskMap] = useState<Map<number, Task & { category: string }>>(new Map());
     
+    // Saved Reports States
+    const [savedFinalReports, setSavedFinalReports] = useState<SavedFinalReport[]>([]);
+    const [savedPayrolls, setSavedPayrolls] = useState<SavedPayroll[]>([]);
+    const [savedTransferOrders, setSavedTransferOrders] = useState<SavedTransferOrder[]>([]);
+    const [savedAnnualSummaries, setSavedAnnualSummaries] = useState<SavedAnnualSummary[]>([]);
+    
     // Auth and loading states
     const [currentUser, setCurrentUser] = useState<User | null>(null);
     const [isLoading, setIsLoading] = useState(true);
@@ -78,6 +86,9 @@ const App: React.FC = () => {
         message: '',
         onConfirm: null,
     });
+
+    // FIX: Moved reportCollections definition to component scope to be accessible by multiple functions.
+    const reportCollections = ['finalReports', 'payrolls', 'transferOrders', 'annualSummaries'];
 
     const requestConfirmation = (title: string, message: string | React.ReactNode, onConfirm: () => void) => {
         setConfirmationState({ isOpen: true, title, message, onConfirm });
@@ -101,7 +112,6 @@ const App: React.FC = () => {
             // Fetch tariffs first as they are global and needed by other components
             const tariffsSnapshot = await getDocs(collection(db, 'tariffs'));
             if (tariffsSnapshot.empty) {
-                // First-time setup: Migrate from constants
                 console.log("Tariffs collection is empty. Populating from initial data...");
                 const batch = writeBatch(db);
                 INITIAL_TASK_GROUPS.forEach(group => {
@@ -116,14 +126,22 @@ const App: React.FC = () => {
                 setTaskGroups(fetchedTaskGroups);
             }
 
+            const reportSetters = {
+                finalReports: (data: any) => setSavedFinalReports(data as SavedFinalReport[]),
+                payrolls: (data: any) => setSavedPayrolls(data as SavedPayroll[]),
+                transferOrders: (data: any) => setSavedTransferOrders(data as SavedTransferOrder[]),
+                annualSummaries: (data: any) => setSavedAnnualSummaries(data as SavedAnnualSummary[]),
+            };
+
+
             if (user.role === 'superadmin') {
-                // Superadmin fetches data from all users using collectionGroup
-                const [logsSnapshot, groupsSnapshot, finalizedSnapshot, workedDaysSnapshot, usersSnapshot] = await Promise.all([
+                const [logsSnapshot, groupsSnapshot, finalizedSnapshot, workedDaysSnapshot, usersSnapshot, ...reportSnapshots] = await Promise.all([
                     getDocs(collectionGroup(db, 'dailyLogs')),
                     getDocs(collectionGroup(db, 'workerGroups')),
-                    getDoc(doc(db, 'metadata', 'finalizedDates')), // Finalized dates are global
+                    getDoc(doc(db, 'metadata', 'finalizedDates')),
                     getDocs(collectionGroup(db, 'workedDays')),
-                    getDocs(collection(db, 'users'))
+                    getDocs(collection(db, 'users')),
+                    ...reportCollections.map(name => getDocs(collectionGroup(db, name)))
                 ]);
 
                 const usersData = usersSnapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() } as User));
@@ -141,34 +159,42 @@ const App: React.FC = () => {
 
                 setWorkedDays(workedDaysSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as WorkedDays)));
                 
-                if (finalizedSnapshot.exists()) {
-                    setFinalizedDates(finalizedSnapshot.data().dates || []);
-                }
+                if (finalizedSnapshot.exists()) setFinalizedDates(finalizedSnapshot.data().dates || []);
+                
+                reportSnapshots.forEach((snapshot, index) => {
+                    const collectionName = reportCollections[index];
+                    const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+                    reportSetters[collectionName as keyof typeof reportSetters](data);
+                });
+
 
             } else {
-                // Regular user fetches only their own data
-                const [logsSnapshot, groupsSnapshot, finalizedSnapshot, workedDaysSnapshot] = await Promise.all([
+                const [logsSnapshot, groupsSnapshot, finalizedSnapshot, workedDaysSnapshot, ...reportSnapshots] = await Promise.all([
                     getDocs(collection(db, 'users', user.uid, 'dailyLogs')),
                     getDocs(collection(db, 'users', user.uid, 'workerGroups')),
                     getDoc(doc(db, 'metadata', 'finalizedDates')),
                     getDocs(collection(db, 'users', user.uid, 'workedDays')),
-                    getDocs(collection(db, 'users')).then(snapshot => setUsers(snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() } as User))))
+                    ...reportCollections.map(name => getDocs(query(collection(db, 'users', user.uid, name), orderBy('createdAt', 'desc'))))
                 ]);
                 
                 setLogs(logsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as DailyLog)));
                 setWorkerGroups(groupsSnapshot.docs.map(doc => ({ id: Number(doc.id), ...doc.data() } as WorkerGroup)));
                 setWorkedDays(workedDaysSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as WorkedDays)));
 
-                if (finalizedSnapshot.exists()) {
-                    setFinalizedDates(finalizedSnapshot.data().dates || []);
-                }
+                if (finalizedSnapshot.exists()) setFinalizedDates(finalizedSnapshot.data().dates || []);
+                
+                reportSnapshots.forEach((snapshot, index) => {
+                    const collectionName = reportCollections[index];
+                    const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+                    reportSetters[collectionName as keyof typeof reportSetters](data);
+                });
             }
         } catch (error) {
             console.error("Error fetching data from Firestore:", error);
         } finally {
             setIsLoading(false);
         }
-    }, []);
+    }, [reportCollections]);
 
     // --- Auth Listener ---
     useEffect(() => {
@@ -196,7 +222,6 @@ const App: React.FC = () => {
                     const batch = writeBatch(db);
                     batch.set(userDocRef, newUserFirestoreData);
 
-                    // Also create the "Departed" group for the new user
                     const departedGroup: Omit<WorkerGroup, 'id'> = {
                         groupName: 'Personnel Parti',
                         workers: [],
@@ -208,7 +233,7 @@ const App: React.FC = () => {
                     batch.set(departedGroupRef, departedGroup);
 
                     await batch.commit();
-                    userDoc = await getDoc(userDocRef); // Re-fetch the doc after creation
+                    userDoc = await getDoc(userDocRef);
                 }
 
                 if (userDoc.exists()) {
@@ -219,7 +244,6 @@ const App: React.FC = () => {
                         role: userDbData.role as UserRole,
                     };
 
-                    // Ensure the target user always has superadmin rights, even if they existed before this code change.
                     if (userData.email === 'tazzihamid@gmail.com' && userData.role !== 'superadmin') {
                         userData.role = 'superadmin';
                         await updateDoc(userDocRef, { role: 'superadmin' });
@@ -228,7 +252,6 @@ const App: React.FC = () => {
                     setCurrentUser(userData);
                     await fetchData(userData);
                 } else {
-                    // This case should ideally not be reached after the creation block above, but it's good for safety.
                     signOut(auth);
                 }
             } else {
@@ -245,7 +268,6 @@ const App: React.FC = () => {
         }
     }, [taskGroups]);
     
-    // Ensure the departed group always exists for the current user (self-healing for existing users)
     useEffect(() => {
         if (!isLoading && currentUser && !workerGroups.some(g => g.id === DEPARTED_GROUP_ID && g.owner === currentUser.uid)) {
              const departedGroup: WorkerGroup = {
@@ -257,9 +279,9 @@ const App: React.FC = () => {
                 owner: currentUser.uid,
             };
             const groupDocRef = doc(db, 'users', currentUser.uid, 'workerGroups', String(DEPARTED_GROUP_ID));
-            setDoc(groupDocRef, departedGroup)
+            setDoc(groupDocRef)
               .then(() => {
-                if(currentUser.role !== 'superadmin') { // Avoid state pollution for admin
+                if(currentUser.role !== 'superadmin') {
                     setWorkerGroups(prev => [...prev, departedGroup]);
                 }
               });
@@ -270,6 +292,49 @@ const App: React.FC = () => {
         document.addEventListener('mousedown', unlockAudio, { once: true });
         return () => document.removeEventListener('mousedown', unlockAudio);
     }, []);
+
+    // --- Generic Handlers for Saved Reports ---
+    const createSaveHandler = <T extends { id?: string; owner?: string; createdAt?: string }>(collectionName: string) => async (reportToSave: T) => {
+        if (!currentUser) return;
+        const isNew = !reportToSave.id;
+        const ownerId = isNew ? currentUser.uid : reportToSave.owner!;
+        if (currentUser.role !== 'superadmin' && ownerId !== currentUser.uid) return;
+
+        const now = new Date().toISOString();
+        const data = {
+            ...reportToSave,
+            owner: ownerId,
+            createdAt: isNew ? now : reportToSave.createdAt!,
+            updatedAt: now,
+        };
+
+        if (isNew) {
+            const { id, ...payload } = data;
+            await addDoc(collection(db, 'users', ownerId, collectionName), payload);
+        } else {
+            const docRef = doc(db, 'users', ownerId, collectionName, reportToSave.id!);
+            await setDoc(docRef, data);
+        }
+        await fetchData(currentUser);
+    };
+
+    const createDeleteHandler = <T extends { id: string; owner: string }>(collectionName: string) => async (reportToDelete: T) => {
+        if (!currentUser) return;
+        const { id, owner } = reportToDelete;
+        if (currentUser.role !== 'superadmin' && owner !== currentUser.uid) return;
+        await deleteDoc(doc(db, 'users', owner, collectionName, id));
+        await fetchData(currentUser);
+    };
+
+    const handleSaveFinalReport = createSaveHandler<Partial<SavedFinalReport>>('finalReports');
+    const handleDeleteFinalReport = createDeleteHandler<SavedFinalReport>('finalReports');
+    const handleSavePayroll = createSaveHandler<Partial<SavedPayroll>>('payrolls');
+    const handleDeletePayroll = createDeleteHandler<SavedPayroll>('payrolls');
+    const handleSaveTransferOrder = createSaveHandler<Partial<SavedTransferOrder>>('transferOrders');
+    const handleDeleteTransferOrder = createDeleteHandler<SavedTransferOrder>('transferOrders');
+    const handleSaveAnnualSummary = createSaveHandler<Partial<SavedAnnualSummary>>('annualSummaries');
+    const handleDeleteAnnualSummary = createDeleteHandler<SavedAnnualSummary>('annualSummaries');
+
 
     // --- Data Writing Functions with Scoping ---
     const addLog = useCallback(async (logData: Omit<DailyLog, 'id' | 'owner'>) => {
@@ -393,7 +458,7 @@ const App: React.FC = () => {
         const newGroupId = Date.now();
         const newGroup: WorkerGroup = { id: newGroupId, groupName, workers: [], owner: currentUser.uid };
         await setDoc(doc(db, 'users', currentUser.uid, 'workerGroups', String(newGroupId)), newGroup);
-        if (currentUser) await fetchData(currentUser); // Refresh all data
+        if (currentUser) await fetchData(currentUser);
     };
 
     const editGroup = async (groupId: number, newGroupName: string, ownerId: string) => {
@@ -411,7 +476,7 @@ const App: React.FC = () => {
         const group = workerGroups.find(g => g.id === groupId && g.owner === ownerId);
         if(group) {
             await updateDoc(groupRef, { isArchived: true, workers: group.workers.map(w => ({...w, isArchived: true})) });
-            if (currentUser) await fetchData(currentUser); // Refresh data after archiving
+            if (currentUser) await fetchData(currentUser);
         }
     };
     
@@ -482,17 +547,14 @@ const App: React.FC = () => {
         const targetGroup = workerGroups.find(g => g.id === targetGroupId);
         if (!targetGroup) return;
 
-        // Security check
         if (currentUser.role !== 'superadmin' && (sourceGroup.owner !== currentUser.uid || targetGroup.owner !== currentUser.uid)) return;
 
         workerToMove = { ...workerToMove, isArchived: !!targetGroup.isDepartedGroup };
         const batch = writeBatch(db);
 
-        // Remove from source
         const sourceGroupRef = doc(db, "users", sourceGroup.owner!, "workerGroups", String(sourceGroup.id));
         batch.update(sourceGroupRef, { workers: sourceGroup.workers.filter(w => w.id !== workerId) });
 
-        // Add to target
         const targetGroupRef = doc(db, "users", targetGroup.owner!, "workerGroups", String(targetGroup.id));
         batch.update(targetGroupRef, { workers: [...targetGroup.workers, workerToMove!].sort((a,b) => a.name.localeCompare(b.name)) });
         
@@ -571,7 +633,7 @@ const App: React.FC = () => {
         
         const batch = writeBatch(db);
 
-        const collectionsToDelete = ['dailyLogs', 'workerGroups', 'workedDays'];
+        const collectionsToDelete = ['dailyLogs', 'workerGroups', 'workedDays', ...reportCollections];
         for (const collectionName of collectionsToDelete) {
             const snapshot = await getDocs(collection(db, 'users', userId, collectionName));
             snapshot.forEach(doc => batch.delete(doc.ref));
@@ -648,11 +710,16 @@ const App: React.FC = () => {
     if (!currentUser) return <LoginView />;
     if (isLoading) return <div className="min-h-screen flex items-center justify-center bg-slate-100">Chargement des données...</div>;
 
-    // Filter data for current user if not superadmin
     const userLogs = currentUser.role === 'superadmin' ? logs : logs.filter(l => l.owner === currentUser.uid);
     const userWorkerGroups = currentUser.role === 'superadmin' ? workerGroups : workerGroups.filter(g => g.owner === currentUser.uid);
     const userWorkedDays = currentUser.role === 'superadmin' ? workedDays : workedDays.filter(wd => wd.owner === currentUser.uid);
     
+    // Filter saved reports for current user if not superadmin
+    const userSavedFinalReports = currentUser.role === 'superadmin' ? savedFinalReports : savedFinalReports.filter(r => r.owner === currentUser.uid);
+    const userSavedPayrolls = currentUser.role === 'superadmin' ? savedPayrolls : savedPayrolls.filter(r => r.owner === currentUser.uid);
+    const userSavedTransferOrders = currentUser.role === 'superadmin' ? savedTransferOrders : savedTransferOrders.filter(r => r.owner === currentUser.uid);
+    const userSavedAnnualSummaries = currentUser.role === 'superadmin' ? savedAnnualSummaries : savedAnnualSummaries.filter(r => r.owner === currentUser.uid);
+
     return (
         <div className="min-h-screen font-sans flex">
             <Sidebar 
@@ -673,11 +740,11 @@ const App: React.FC = () => {
                     <div className={`transition-opacity duration-150 ${isAnimatingOut ? 'opacity-0' : 'opacity-100'}`}>
                         <div className="print:hidden">
                             {currentView === 'entry' && <DailyEntryView logs={userLogs} addLog={addLog} deleteLog={deleteLog} finalizedDates={finalizedDates} onToggleFinalize={toggleFinalizeDate} workerGroups={userWorkerGroups} entryDate={entryDate} setEntryDate={setEntryDate} currentUser={currentUser} deleteLogsByDate={deleteLogsByDate} requestConfirmation={requestConfirmation} taskGroups={taskGroups} taskMap={taskMap} />}
-                            {currentView === 'finalReport' && <FinalReportView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} onSaveWorkedDays={saveWorkedDays} taskMap={taskMap} />}
-                            {currentView === 'payroll' && <PayrollView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} taskMap={taskMap} />}
-                            {currentView === 'transferOrder' && <TransferOrderView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} taskMap={taskMap} />}
+                            {currentView === 'finalReport' && <FinalReportView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} onSaveWorkedDays={saveWorkedDays} taskMap={taskMap} savedReports={userSavedFinalReports} onSave={handleSaveFinalReport} onDelete={handleDeleteFinalReport} requestConfirmation={requestConfirmation} currentUser={currentUser} />}
+                            {currentView === 'payroll' && <PayrollView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} taskMap={taskMap} savedReports={userSavedPayrolls} onSave={handleSavePayroll} onDelete={handleDeletePayroll} requestConfirmation={requestConfirmation} currentUser={currentUser} />}
+                            {currentView === 'transferOrder' && <TransferOrderView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} taskMap={taskMap} savedReports={userSavedTransferOrders} onSave={handleSaveTransferOrder} onDelete={handleDeleteTransferOrder} requestConfirmation={requestConfirmation} currentUser={currentUser} />}
                             {currentView === 'season' && <SeasonView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} taskMap={taskMap} />}
-                            {currentView === 'annualSummary' && <AnnualSummaryView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} taskMap={taskMap} />}
+                            {currentView === 'annualSummary' && <AnnualSummaryView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} taskMap={taskMap} savedReports={userSavedAnnualSummaries} onSave={handleSaveAnnualSummary} onDelete={handleDeleteAnnualSummary} requestConfirmation={requestConfirmation} currentUser={currentUser} />}
                             {currentView === 'management' && (
                                 <ManagementView 
                                     workerGroups={userWorkerGroups} onAddGroup={addGroup} onEditGroup={editGroup} onArchiveGroup={archiveGroup}
@@ -708,11 +775,11 @@ const App: React.FC = () => {
                             )}
                         </div>
                         <div className="hidden print:block">
-                            {currentView === 'finalReport' && <FinalReportView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} onSaveWorkedDays={saveWorkedDays} isPrinting taskMap={taskMap} />}
-                            {currentView === 'payroll' && <PayrollView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} isPrinting taskMap={taskMap} />}
-                            {currentView === 'transferOrder' && <TransferOrderView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} isPrinting taskMap={taskMap} />}
+                            {currentView === 'finalReport' && <FinalReportView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} onSaveWorkedDays={saveWorkedDays} isPrinting taskMap={taskMap} savedReports={userSavedFinalReports} onSave={handleSaveFinalReport} onDelete={handleDeleteFinalReport} requestConfirmation={requestConfirmation} currentUser={currentUser} />}
+                            {currentView === 'payroll' && <PayrollView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} isPrinting taskMap={taskMap} savedReports={userSavedPayrolls} onSave={handleSavePayroll} onDelete={handleDeletePayroll} requestConfirmation={requestConfirmation} currentUser={currentUser} />}
+                            {currentView === 'transferOrder' && <TransferOrderView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} isPrinting taskMap={taskMap} savedReports={userSavedTransferOrders} onSave={handleSaveTransferOrder} onDelete={handleDeleteTransferOrder} requestConfirmation={requestConfirmation} currentUser={currentUser} />}
                             {currentView === 'season' && <SeasonView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} isPrinting taskMap={taskMap} />}
-                            {currentView === 'annualSummary' && <AnnualSummaryView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} isPrinting taskMap={taskMap} />}
+                            {currentView === 'annualSummary' && <AnnualSummaryView allLogs={logs} workerGroups={workerGroups} workedDays={workedDays} isPrinting taskMap={taskMap} savedReports={userSavedAnnualSummaries} onSave={handleSaveAnnualSummary} onDelete={handleDeleteAnnualSummary} requestConfirmation={requestConfirmation} currentUser={currentUser} />}
                         </div>
                     </div>
                 </main>
