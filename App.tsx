@@ -1,4 +1,6 @@
 
+
+
 import React, { useState, useCallback, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import { DailyLog, WorkerGroup, Worker, WorkedDays, User, UserRole, Task, TaskGroup, SavedFinalReport, SavedPayroll, SavedTransferOrder, SavedAnnualSummary, PayrollData, TransferOrderData } from './types';
@@ -859,15 +861,82 @@ const App: React.FC = () => {
     }, [exportRequest]);
 
     const renderExportComponent = () => {
-        if (!exportRequest) return null;
+        if (!exportRequest || !currentUser) return null;
         const { report, type } = exportRequest;
-        
+
+        // Dummy functions to satisfy prop requirements for non-interactive rendering
+        const noOp = () => {};
+        const noOpPromise = async () => {};
+
+        // All components receive the full 'report' object via the 'viewingReport' prop,
+        // which they are designed to handle internally for printing/viewing.
+        // They also receive all necessary global data and dummy handlers to prevent crashes.
         switch (type) {
-            case 'finalReport': return <FinalReportView isPrinting savedReports={[]} {...({} as any)} {...report.props} workerGroups={workerGroups} workedDays={workedDays} taskMap={taskMap} currentUser={currentUser} viewingReport={report} />;
-            case 'payroll': return <PayrollView isPrinting savedReports={[]} {...({} as any)} {...report.props} workerGroups={workerGroups} taskMap={taskMap} currentUser={currentUser} viewingReport={report} onSave={handleSavePayroll} />;
-            case 'transferOrder': return <TransferOrderView isPrinting savedReports={[]} {...({} as any)} {...report.props} workerGroups={workerGroups} taskMap={taskMap} currentUser={currentUser} viewingReport={report} onSave={handleSaveTransferOrder}/>;
-            case 'annualSummary': return <AnnualSummaryView isPrinting savedReports={[]} {...({} as any)} {...report.props} savedFinalReports={savedFinalReports} workerGroups={workerGroups} workedDays={workedDays} taskMap={taskMap} currentUser={currentUser} viewingReport={report} />;
-            default: return null;
+            case 'finalReport':
+                return <FinalReportView
+                    isPrinting
+                    // FIX: Use the 'logs' state variable, as 'allLogs' is not defined in this scope.
+                    allLogs={logs}
+                    workerGroups={workerGroups}
+                    workedDays={workedDays}
+                    taskMap={taskMap}
+                    savedReports={[]}
+                    onSave={noOpPromise}
+                    onSavePayroll={noOpPromise}
+                    onSaveTransferOrder={noOpPromise}
+                    onDelete={noOp}
+                    onSaveWorkedDays={noOp}
+                    requestConfirmation={noOp}
+                    currentUser={currentUser}
+                    onDirectExport={noOp}
+                    viewingReport={report}
+                />;
+            case 'payroll':
+                return <PayrollView
+                    isPrinting
+                    workerGroups={workerGroups}
+                    taskMap={taskMap}
+                    savedReports={[]}
+                    onSave={noOp}
+                    onDelete={noOp}
+                    requestConfirmation={noOp}
+                    currentUser={currentUser}
+                    onDirectExport={noOp}
+                    onRetroactiveGenerate={noOp}
+                    viewingReport={report}
+                />;
+            case 'transferOrder':
+                return <TransferOrderView
+                    isPrinting
+                    workerGroups={workerGroups}
+                    taskMap={taskMap}
+                    savedReports={[]}
+                    onSave={noOp}
+                    onDelete={noOp}
+                    requestConfirmation={noOp}
+                    currentUser={currentUser}
+                    onDirectExport={noOp}
+                    viewingReport={report}
+                />;
+            case 'annualSummary':
+                 return <AnnualSummaryView
+                    isPrinting
+                    // FIX: Use the 'logs' state variable, as 'allLogs' is not defined in this scope.
+                    allLogs={logs}
+                    workerGroups={workerGroups}
+                    workedDays={workedDays}
+                    taskMap={taskMap}
+                    savedReports={[]}
+                    savedFinalReports={savedFinalReports}
+                    onSave={noOp}
+                    onDelete={noOp}
+                    requestConfirmation={noOp}
+                    currentUser={currentUser}
+                    onDirectExport={noOp}
+                    viewingReport={report}
+                />;
+            default:
+                return null;
         }
     };
     
