@@ -76,8 +76,9 @@ function getCleanClonedElement(elementId: string): HTMLElement | null {
  * Prints the content of a DOM element.
  * @param elementId The ID of the element to print.
  * @param title The title of the printed document.
+ * @param orientation The page orientation for printing.
  */
-export const printElement = (elementId: string, title: string) => {
+export const printElement = (elementId: string, title: string, orientation: 'portrait' | 'landscape' = 'landscape') => {
     const cleanElement = getCleanClonedElement(elementId);
     if (!cleanElement) return;
 
@@ -97,14 +98,14 @@ export const printElement = (elementId: string, title: string) => {
                 <script src="https://cdn.tailwindcss.com"></script>
                 <style>
                     @page { 
-                        size: A4 landscape; 
-                        margin: 0.5in;
+                        size: A4 ${orientation}; 
+                        margin: 0;
                     }
                     body { 
                         font-family: Arial, sans-serif; 
                         -webkit-print-color-adjust: exact; 
                         margin: 0;
-                        padding: 0;
+                        padding: 0.375in;
                     }
                     
                     .printable-a4 {

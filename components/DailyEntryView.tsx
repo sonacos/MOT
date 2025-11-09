@@ -128,7 +128,7 @@ const DailyEntryView: React.FC<DailyEntryViewProps> = ({ logs, addLog, deleteLog
         
         switch(format) {
             case 'print':
-                printElement(tableContainerId, title);
+                printElement(tableContainerId, title, 'landscape');
                 break;
             case 'excel':
                 exportToExcel(tableContainerId, fileName);

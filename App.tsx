@@ -852,7 +852,7 @@ const App: React.FC = () => {
                 if(type === 'transferOrder') orientation = 'portrait';
                 
                 switch (format) {
-                    case 'print': printElement(elementId, type); break;
+                    case 'print': printElement(elementId, type, orientation); break;
                     case 'pdf': exportToPDF(elementId, fileName, orientation); break;
                     case 'excel': exportToExcel(elementId, fileName); break;
                 }
@@ -1097,7 +1097,6 @@ const App: React.FC = () => {
                 </div>,
                 document.getElementById('direct-export-container')!
             )}
-            <div id="direct-export-container" className="absolute -top-[9999px] -left-[9999px] print:hidden"></div>
         </div>
     );
 };

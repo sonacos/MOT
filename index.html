@@ -32,10 +32,11 @@
     <style type="text/css" media="print">
       @page {
         size: A4;
-        margin: 0.375in;
+        margin: 0; /* Supprime les en-têtes/pieds de page du navigateur */
       }
       body {
         -webkit-print-color-adjust: exact;
+        margin: 0.375in; /* Applique la marge au contenu lui-même */
       }
     </style>
     <style>
@@ -96,6 +97,7 @@
 </head>
   <body>
     <div id="root"></div>
+    <div id="direct-export-container" class="absolute -top-[9999px] -left-[9999px] print:hidden"></div>
     <script type="module" src="/index.tsx"></script>
   </body>
 </html>
